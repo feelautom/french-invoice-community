@@ -149,3 +149,15 @@ dotnet test
 ## Licence
 
 [Elastic License 2.0 (ELv2)](LICENSE)
+
+En resume, vous pouvez librement :
+
+- **Utiliser** FrenchInvoice pour votre activite personnelle ou professionnelle
+- **Modifier** le code source pour l'adapter a vos besoins
+- **Heberger** l'application pour vous-meme ou votre entreprise
+
+Ce que vous **ne pouvez pas** faire :
+
+- Proposer FrenchInvoice comme un service heberge a des tiers (SaaS)
+- Revendre ou redistribuer le logiciel comme votre propre produit
+- Retirer ou contourner les fonctionnalites de licence
