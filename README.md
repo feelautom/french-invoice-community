@@ -1,5 +1,11 @@
 # FrenchInvoice Community Edition
 
+[![License: ELv2](https://img.shields.io/badge/License-ELv2-blue.svg)](LICENSE)
+[![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/)
+[![Blazor](https://img.shields.io/badge/Blazor-Server-512BD4?logo=blazor)](https://dotnet.microsoft.com/apps/aspnet/web-apps/blazor)
+[![Factur-X](https://img.shields.io/badge/Factur--X-EN%2016931-green)](https://fnfe-mpe.org/factur-x/)
+
 ![FrenchInvoice](screenshot.png)
 
 Outil de gestion comptable complet pour **auto-entrepreneurs** et **micro-entreprises** en France.
