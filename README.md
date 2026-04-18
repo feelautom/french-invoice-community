@@ -1,5 +1,6 @@
 # FrenchInvoice Community Edition
 
+[![Build & Tests](https://github.com/feelautom/french-invoice-community/actions/workflows/build.yml/badge.svg)](https://github.com/feelautom/french-invoice-community/actions/workflows/build.yml)
 [![License: ELv2](https://img.shields.io/badge/License-ELv2-blue.svg)](LICENSE)
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/)
