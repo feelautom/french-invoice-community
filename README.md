@@ -1,65 +1,142 @@
 # FrenchInvoice Community Edition
 
-Outil de gestion comptable pour **auto-entrepreneurs** et **micro-entreprises** en France.
+![FrenchInvoice](screenshot.png)
 
-Factures Factur-X, devis, comptabilite, declarations URSSAF -- tout-en-un, auto-heberge.
+Outil de gestion comptable complet pour **auto-entrepreneurs** et **micro-entreprises** en France.
+
+Factures Factur-X, devis, comptabilite, declarations URSSAF — tout-en-un, auto-heberge, gratuit.
 
 ## Fonctionnalites
 
-- **Factures Factur-X** : PDF conformes avec XML embarque (ZUGFeRD v2.3, profil Comfort)
-- **Devis** : creation, envoi, expiration automatique, conversion en facture
-- **Comptabilite** : suivi CA, cotisations sociales, charges, benefice net
-- **Declarations URSSAF** : generation mensuelle/trimestrielle avec alertes echeances
-- **Import bancaire** : CSV multi-banques (Boursobank, BNP, Credit Mutuel, generique)
-- **Export/Import** : sauvegarde ZIP chiffree avec integrite SHA-256
+- **Factures Factur-X** — PDF conformes avec XML embarque (ZUGFeRD v2.3, profil Comfort)
+- **Devis** — creation, envoi, expiration automatique, conversion en facture
+- **Comptabilite** — suivi CA, cotisations sociales, charges fixes/variables, benefice net
+- **Declarations URSSAF** — generation mensuelle ou trimestrielle avec alertes echeances
+- **Dashboard** — tresorerie, progression vers le plafond, prochaine echeance URSSAF
+- **Import bancaire** — CSV multi-banques (Boursobank, BNP, Credit Mutuel, generique)
+- **Clients** — gestion complete avec recherche SIRET automatique
+- **Export/Import** — sauvegarde ZIP avec integrite SHA-256
 - **Livre des recettes** et **Registre des achats** en PDF
-- **API REST** avec documentation Swagger
-- **ACRE** : calcul automatique des cotisations reduites
+- **ACRE** — calcul automatique des cotisations reduites la premiere annee
+- **Mode sombre** — persistant entre les sessions
 
-## Stack technique
+## Installation
 
-- [.NET 9](https://dotnet.microsoft.com/) -- Blazor Server
-- [SQLite](https://www.sqlite.org/) + Entity Framework Core
-- [MudBlazor](https://mudblazor.com/) -- UI Material Design
-- [QuestPDF](https://www.questpdf.com/) -- generation PDF
-- [ZUGFeRD-csharp](https://github.com/stephanstapel/ZUGFeRD-csharp) -- XML Factur-X
+### Prerequis
 
-## Demarrage rapide
+- [Docker](https://docs.docker.com/get-docker/) et [Docker Compose](https://docs.docker.com/compose/install/)
 
-### Avec Docker (recommande)
+C'est tout. Pas besoin d'installer .NET, pas de base de donnees a configurer.
+
+### 1. Cloner le depot
 
 ```bash
+git clone https://github.com/FrenchInvoice/frenchinvoice-community.git
+cd frenchinvoice-community
+```
+
+### 2. Lancer
+
+```bash
+docker-compose up -d
+```
+
+### 3. Ouvrir
+
+Rendez-vous sur [http://localhost:5555](http://localhost:5555).
+
+Au premier lancement, un assistant de configuration vous guidera :
+
+1. Entrez votre **numero SIRET** — les informations de votre entreprise sont remplies automatiquement depuis l'API gouvernementale
+2. Completez les champs manquants (telephone, TVA, type d'activite)
+3. Validez — vous etes pret a facturer
+
+### Changer le port
+
+Par defaut, l'application ecoute sur le port **5555**. Pour changer, modifiez `docker-compose.yml` :
+
+```yaml
+ports:
+  - "8080:8080"  # remplacez 5555 par le port souhaite
+```
+
+### Mise a jour
+
+```bash
+git pull
 docker-compose up --build -d
 ```
 
-L'application est accessible sur [http://localhost:5000](http://localhost:5000).
+Les migrations de base de donnees s'appliquent automatiquement. Vos donnees sont preservees dans le volume Docker `community-data`.
 
-### Sans Docker
+### Sauvegarde
+
+Vos donnees (base SQLite + PDFs) sont dans le volume Docker `community-data`. Pour sauvegarder :
 
 ```bash
+# Exporter depuis l'interface
+# Menu lateral > Export/Import > Exporter (ZIP avec integrite SHA-256)
+
+# Ou copier le volume directement
+docker cp frenchinvoice-community:/app/Data ./backup
+```
+
+## Installation sans Docker
+
+Si vous preferez ne pas utiliser Docker :
+
+```bash
+# Prerequis : .NET 9 SDK
+# https://dotnet.microsoft.com/download/dotnet/9.0
+
 dotnet run --project src/FrenchInvoice.Community
 ```
 
-### Tests
+L'application demarre sur `http://localhost:5000`.
+
+## Stack technique
+
+| Composant | Technologie |
+|-----------|-------------|
+| Framework | [.NET 9](https://dotnet.microsoft.com/) — Blazor Server |
+| Base de donnees | [SQLite](https://www.sqlite.org/) + Entity Framework Core |
+| Interface | [MudBlazor](https://mudblazor.com/) — Material Design |
+| Generation PDF | [QuestPDF](https://www.questpdf.com/) |
+| Factur-X | [ZUGFeRD-csharp](https://github.com/stephanstapel/ZUGFeRD-csharp) — XML EN 16931 |
+
+## Conformite
+
+FrenchInvoice genere des factures conformes a la legislation francaise :
+
+- **Numerotation sequentielle** sans trou (Art. L441-9 Code de Commerce)
+- **Factur-X** EN 16931 (profil Comfort, ZUGFeRD v2.3)
+- **Mentions legales obligatoires** : TVA art. 293B, penalites de retard, indemnite 40 EUR
+- **Cadre de facturation** BT-23 pour la reforme e-invoicing (sept. 2026)
+
+## Taux de cotisations auto-entrepreneur (2026)
+
+| Categorie | Taux |
+|-----------|------|
+| BIC — Vente de marchandises | 12.3% |
+| BIC — Prestations de services | 21.2% |
+| BNC — Liberal | 21.1% |
+
+## FrenchInvoice SaaS
+
+Cette edition Community est gratuite et auto-hebergee.
+
+Une version **SaaS** hebergee est egalement disponible sur [frenchinvoice.fr](https://frenchinvoice.fr) avec des fonctionnalites supplementaires :
+
+- API REST pour integrer vos outils
+- Import automatique des clients depuis votre site web
+- Synchronisation Stancer/Stripe
+- Hebergement et sauvegardes gerees pour vous
+
+## Tests
 
 ```bash
 dotnet test
 ```
-
-## Taux de cotisations (2026)
-
-| Categorie | Taux |
-|-----------|------|
-| BIC -- Vente de marchandises | 12.3% |
-| BIC -- Prestations de services | 21.2% |
-| BNC -- Liberal | 21.1% |
-
-## Conformite
-
-- Numerotation sequentielle sans trou (Art. L441-9 Code de Commerce)
-- Factur-X EN 16931 (profil Comfort, ZUGFeRD v2.3)
-- Mentions legales obligatoires sur PDF (TVA art. 293B, penalites de retard, indemnite 40 EUR)
-- Cadre de facturation (BT-23) pour la reforme e-invoicing sept. 2026
 
 ## Licence
 

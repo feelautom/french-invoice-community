@@ -1,3 +1,29 @@
 @inherits LayoutComponentBase
 
-@Body
+<MudThemeProvider Theme="_theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudImage Src="logo.svg" Alt="FrenchInvoice" Width="36" Height="36" Class="ml-3 mr-2" />
+        <MudText Typo="Typo.h5">FrenchInvoice</MudText>
+        <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="ml-2">Community</MudChip>
+    </MudAppBar>
+    <MudMainContent Class="pa-4">
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private MudTheme _theme = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#1565C0",
+            Secondary = "#00897B",
+            AppbarBackground = "#1565C0"
+        }
+    };
+}

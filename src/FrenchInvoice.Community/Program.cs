@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
@@ -7,7 +5,7 @@ using FrenchInvoice.Core.Data;
 using FrenchInvoice.Core.Models;
 using FrenchInvoice.Core.Services;
 using FrenchInvoice.Community.Components;
-using FrenchInvoice.Community.Endpoints;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -45,13 +43,6 @@ builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<CommunityAuthStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp =>
     sp.GetRequiredService<CommunityAuthStateProvider>());
-
-// JSON serialization pour l'API
-builder.Services.ConfigureHttpJsonOptions(options =>
-{
-    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
-    options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-});
 
 var app = builder.Build();
 
@@ -114,13 +105,6 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
-
-// API REST endpoints
-app.MapCommunityClientEndpoints();
-app.MapCommunityInvoiceEndpoints();
-app.MapCommunityQuoteEndpoints();
-app.MapCommunityDeclarationEndpoints();
-app.MapCommunityExportEndpoints();
 
 // Endpoints de telechargement PDF
 app.MapGet("/download/invoices/{id:int}/pdf", async (int id, IDbContextFactory<AppDbContext> dbFactory) =>

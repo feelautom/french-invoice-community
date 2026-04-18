@@ -200,20 +200,6 @@
     protected override async Task OnInitializedAsync()
     {
         await TenantProvider.InitializeAsync();
-        if (TenantProvider.IsSuperAdmin)
-        {
-            Navigation.NavigateTo("/admin");
-            return;
-        }
-
-        // Rediriger si l'entité n'est pas configurée
-        using var dbCheck = DbFactory.CreateDbContext();
-        var entity = await dbCheck.Entities.FindAsync(TenantProvider.EntityId);
-        if (entity != null && !entity.Configured)
-        {
-            Navigation.NavigateTo(EditionProvider.IsCommunity ? "/settings" : "/onboarding");
-            return;
-        }
         var now = DateTime.Today;
 
         _settings = await Accounting.GetEntityAsync();

@@ -1,4 +1,8 @@
 @inherits LayoutComponentBase
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ITenantProvider TenantProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <MudThemeProvider @bind-IsDarkMode="@_isDarkMode" Theme="_theme" />
 <MudPopoverProvider />
@@ -14,7 +18,7 @@
         <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="ml-2">Community</MudChip>
         <MudSpacer />
         <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
-                       Color="Color.Inherit" OnClick="@(() => _isDarkMode = !_isDarkMode)" />
+                       Color="Color.Inherit" OnClick="ToggleDarkMode" />
     </MudAppBar>
     <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
         <NavMenu />
@@ -42,6 +46,40 @@
             Secondary = "#4DB6AC"
         }
     };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Garde globale : rediriger vers /onboarding si l'entité n'est pas configurée
+        var uri = Navigation.ToBaseRelativePath(Navigation.Uri);
+        if (uri == "onboarding") return;
+
+        await TenantProvider.InitializeAsync();
+        using var db = DbFactory.CreateDbContext();
+        var entity = await db.Entities.FindAsync(TenantProvider.EntityId);
+        if (entity != null && !entity.Configured)
+        {
+            Navigation.NavigateTo("/onboarding");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", "darkMode");
+            if (stored == "true")
+            {
+                _isDarkMode = true;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task ToggleDarkMode()
+    {
+        _isDarkMode = !_isDarkMode;
+        await JS.InvokeVoidAsync("localStorage.setItem", "darkMode", _isDarkMode ? "true" : "false");
+    }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 }
