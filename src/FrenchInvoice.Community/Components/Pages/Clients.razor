@@ -1,0 +1,374 @@
+@page "/clients"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ISnackbar Snackbar
+@inject ITenantProvider TenantProvider
+@inject SiretLookupService SiretLookup
+@inject NatureJuridiqueService NatureJuridique
+
+<PageTitle>Clients — FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Clients</MudText>
+
+@if (_canEdit)
+{
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenAddDialog" Class="mb-4"
+               StartIcon="@Icons.Material.Filled.Add">
+        Nouveau client
+    </MudButton>
+}
+
+<MudTable T="Client" Items="@_clients" Dense="true" Hover="true" Striped="true" Filter="FilterFunc">
+    <ToolBarContent>
+        <MudTextField @bind-Value="_searchString" Placeholder="Rechercher..." Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" />
+    </ToolBarContent>
+    <ColGroup>
+        <col />
+        <col style="width:200px;" />
+        <col style="width:100px;" />
+        <col style="width:150px;" />
+        <col style="width:150px;" />
+        <col style="width:120px;" />
+    </ColGroup>
+    <HeaderContent>
+        <MudTh><MudTableSortLabel SortBy="new Func<Client, object>(x => x.Nom)">Nom</MudTableSortLabel></MudTh>
+        <MudTh>Email</MudTh>
+        <MudTh>Code postal</MudTh>
+        <MudTh>Ville</MudTh>
+        <MudTh>SIRET</MudTh>
+        <MudTh>Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Nom">@context.Nom</MudTd>
+        <MudTd DataLabel="Email">@context.Email</MudTd>
+        <MudTd DataLabel="Code postal">@context.CodePostal</MudTd>
+        <MudTd DataLabel="Ville">@context.Ville</MudTd>
+        <MudTd DataLabel="SIRET">
+            @context.Siret
+            @if (context.SiretDataId.HasValue)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Info"
+                               OnClick="() => ShowSiretDetails(context)" />
+            }
+        </MudTd>
+        <MudTd DataLabel="Actions">
+            @if (_canEdit)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                               OnClick="() => OpenEditDialog(context)" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="() => DeleteClient(context)" />
+            }
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@* ── Dialog Ajout/Edition client ── *@
+<MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_isEdit ? "Modifier le client" : "Nouveau client")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudGrid>
+                <MudItem xs="9">
+                    <MudTextField @bind-Value="_editItem.Siret" Label="SIRET / SIREN (optionnel)" />
+                </MudItem>
+                <MudItem xs="3" Class="d-flex align-end">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                               OnClick="() => LookupSiret(false)" Disabled="@_siretLoading"
+                               StartIcon="@Icons.Material.Filled.Search" FullWidth="true">
+                        @if (_siretLoading) { <MudProgressCircular Size="Size.Small" Indeterminate="true" /> }
+                        else { <text>Chercher</text> }
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+            <MudTextField @bind-Value="_editItem.Nom" Label="Nom / Raison sociale" Required="true" />
+            <MudTextField @bind-Value="_editItem.Email" Label="Email" InputType="InputType.Email" />
+            <MudTextField @bind-Value="_editItem.Adresse" Label="Adresse" />
+            <MudGrid>
+                <MudItem xs="4">
+                    <MudTextField @bind-Value="_editItem.CodePostal" Label="Code postal" />
+                </MudItem>
+                <MudItem xs="8">
+                    <MudTextField @bind-Value="_editItem.Ville" Label="Ville" />
+                </MudItem>
+            </MudGrid>
+            <MudTextField @bind-Value="_editItem.Pays" Label="Pays" />
+            <MudTextField @bind-Value="_editItem.TvaIntracommunautaire" Label="TVA Intracommunautaire (optionnel)" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _dialogVisible = false">Annuler</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveClient">Enregistrer</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* ── Dialog Détails SIRET ── *@
+<MudDialog @bind-Visible="_detailsDialogVisible" Options="_detailsDialogOptions">
+    <TitleContent>
+        <div class="d-flex justify-space-between align-center" style="width:100%;">
+            <MudText Typo="Typo.h6">Fiche entreprise — @_detailsData?.NomComplet</MudText>
+            @if (_canEdit)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                           OnClick="RefreshSiretData" Disabled="@_siretLoading"
+                           StartIcon="@Icons.Material.Filled.Refresh">
+                    @if (_siretLoading) { <MudProgressCircular Size="Size.Small" Indeterminate="true" /> }
+                    else { <text>Rafraichir</text> }
+                </MudButton>
+            }
+        </div>
+    </TitleContent>
+    <DialogContent>
+        @if (_detailsData != null)
+        {
+            <MudSimpleTable Dense="true" Bordered="true">
+                <tbody>
+                    <tr><td><strong>SIREN</strong></td><td>@_detailsData.Siren</td></tr>
+                    <tr><td><strong>SIRET (siege)</strong></td><td>@_detailsData.Siret</td></tr>
+                    <tr><td><strong>Nom complet</strong></td><td>@_detailsData.NomComplet</td></tr>
+                    @if (!string.IsNullOrEmpty(_detailsData.NomCommercial))
+                    {
+                        <tr><td><strong>Nom commercial</strong></td><td>@_detailsData.NomCommercial</td></tr>
+                    }
+                    @if (!string.IsNullOrEmpty(_detailsData.Enseigne))
+                    {
+                        <tr><td><strong>Enseigne</strong></td><td>@_detailsData.Enseigne</td></tr>
+                    }
+                    <tr><td><strong>Adresse</strong></td><td>@_detailsData.Adresse</td></tr>
+                    <tr><td><strong>Code postal</strong></td><td>@_detailsData.CodePostal</td></tr>
+                    <tr><td><strong>Commune</strong></td><td>@_detailsData.LibelleCommune</td></tr>
+                    <tr><td><strong>Departement</strong></td><td>@_detailsData.Departement</td></tr>
+                    <tr><td><strong>Region</strong></td><td>@_detailsData.Region</td></tr>
+                    @if (!string.IsNullOrEmpty(_detailsData.Epci))
+                    {
+                        <tr><td><strong>EPCI</strong></td><td>@_detailsData.Epci</td></tr>
+                    }
+                    <tr><td><strong>Activite principale</strong></td><td>@_detailsData.ActivitePrincipale</td></tr>
+                    @if (!string.IsNullOrEmpty(_detailsData.ActivitePrincipaleNAF25))
+                    {
+                        <tr><td><strong>Activite NAF 2025</strong></td><td>@_detailsData.ActivitePrincipaleNAF25</td></tr>
+                    }
+                    <tr><td><strong>Nature juridique</strong></td><td>@NatureJuridique.GetLabel(_detailsData.NatureJuridique)</td></tr>
+                    <tr><td><strong>Etat</strong></td><td>
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="@(_detailsData.EtatAdministratif == "A" ? Color.Success : Color.Error)">
+                            @(_detailsData.EtatAdministratif == "A" ? "Active" : "Fermee")
+                        </MudChip>
+                    </td></tr>
+                    <tr><td><strong>Entrepreneur individuel</strong></td><td>@(_detailsData.EstEntrepreneurIndividuel ? "Oui" : "Non")</td></tr>
+                    <tr><td><strong>Etablissements</strong></td><td>@_detailsData.NombreEtablissementsOuverts ouverts / @_detailsData.NombreEtablissements total</td></tr>
+                    @if (_detailsData.DateCreationEntreprise.HasValue)
+                    {
+                        <tr><td><strong>Date de creation</strong></td><td>@_detailsData.DateCreationEntreprise.Value.ToString("dd/MM/yyyy")</td></tr>
+                    }
+                    @if (_detailsData.DateDebutActivite.HasValue)
+                    {
+                        <tr><td><strong>Debut d'activite</strong></td><td>@_detailsData.DateDebutActivite.Value.ToString("dd/MM/yyyy")</td></tr>
+                    }
+                    @if (!string.IsNullOrEmpty(_detailsData.CaractereEmployeur))
+                    {
+                        <tr><td><strong>Employeur</strong></td><td>@(_detailsData.CaractereEmployeur == "O" ? "Oui" : "Non")</td></tr>
+                    }
+                    @if (!string.IsNullOrEmpty(_detailsData.Latitude))
+                    {
+                        <tr><td><strong>Coordonnees</strong></td><td>@_detailsData.Latitude, @_detailsData.Longitude</td></tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+            <MudText Typo="Typo.caption" Class="mt-2">
+                Derniere mise a jour INSEE : @_detailsData.DateMiseAJourInsee?.ToString("dd/MM/yyyy HH:mm")
+                — Donnees en cache depuis : @_detailsData.UpdatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+            </MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _detailsDialogVisible = false">Fermer</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Client> _clients = new();
+    private Client _editItem = new();
+    private bool _dialogVisible;
+    private bool _isEdit;
+    private MudForm? _form;
+    private string _searchString = "";
+    private bool _canEdit;
+    private bool _siretLoading;
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true };
+
+    // Détails SIRET
+    private bool _detailsDialogVisible;
+    private SiretData? _detailsData;
+    private Client? _detailsClient;
+    private readonly DialogOptions _detailsDialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+        _canEdit = TenantProvider.CanEdit;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        using var db = DbFactory.CreateDbContext();
+        _clients = await db.Clients
+            .Where(c => c.EntityId == TenantProvider.EntityId)
+            .OrderBy(c => c.Nom)
+            .ToListAsync();
+    }
+
+    private bool FilterFunc(Client client)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString)) return true;
+        var s = _searchString.Trim().ToLower();
+        return client.Nom.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || client.Email.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || client.Ville.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || (client.Siret?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private void OpenAddDialog()
+    {
+        _editItem = new Client { Pays = "France" };
+        _isEdit = false;
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(Client client)
+    {
+        _editItem = new Client
+        {
+            Id = client.Id, Nom = client.Nom, Email = client.Email,
+            Adresse = client.Adresse, CodePostal = client.CodePostal,
+            Ville = client.Ville, Pays = client.Pays,
+            Siret = client.Siret, TvaIntracommunautaire = client.TvaIntracommunautaire,
+            SiretDataId = client.SiretDataId,
+            CreatedAt = client.CreatedAt
+        };
+        _isEdit = true;
+        _dialogVisible = true;
+    }
+
+    private async Task SaveClient()
+    {
+        if (!_canEdit) return;
+        _editItem.UpdatedAt = DateTime.UtcNow;
+        using var db = DbFactory.CreateDbContext();
+        if (_isEdit)
+        {
+            db.Clients.Update(_editItem);
+        }
+        else
+        {
+            _editItem.EntityId = TenantProvider.EntityId;
+            _editItem.CreatedAt = DateTime.UtcNow;
+            db.Clients.Add(_editItem);
+        }
+        await db.SaveChangesAsync();
+        _dialogVisible = false;
+        Snackbar.Add(_isEdit ? "Client modifié" : "Client ajouté", Severity.Success);
+        await LoadData();
+    }
+
+    private async Task LookupSiret(bool forceRefresh)
+    {
+        var siret = _editItem.Siret?.Trim().Replace(" ", "");
+        if (string.IsNullOrWhiteSpace(siret) || siret.Length < 9)
+        {
+            Snackbar.Add("Saisissez un SIRET ou SIREN valide.", Severity.Warning);
+            return;
+        }
+
+        _siretLoading = true;
+        try
+        {
+            var data = await SiretLookup.LookupAsync(siret, forceRefresh);
+            if (data == null)
+            {
+                Snackbar.Add("Aucune entreprise trouvée.", Severity.Warning);
+                return;
+            }
+
+            // Auto-remplir les champs du client
+            var nom = data.NomCommercial ?? data.Enseigne ?? data.NomComplet;
+            if (string.IsNullOrWhiteSpace(_editItem.Nom))
+                _editItem.Nom = nom;
+
+            var adresse = $"{data.NumeroVoie} {data.TypeVoie} {data.LibelleVoie}".Trim();
+            if (!string.IsNullOrWhiteSpace(adresse))
+                _editItem.Adresse = adresse;
+            if (!string.IsNullOrEmpty(data.CodePostal))
+                _editItem.CodePostal = data.CodePostal;
+            if (!string.IsNullOrEmpty(data.LibelleCommune))
+                _editItem.Ville = data.LibelleCommune;
+
+            _editItem.Siret = data.Siret;
+            _editItem.SiretDataId = data.Id;
+
+            Snackbar.Add($"Entreprise trouvée : {nom}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Erreur : " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _siretLoading = false;
+        }
+    }
+
+    private async Task ShowSiretDetails(Client client)
+    {
+        if (!client.SiretDataId.HasValue) return;
+        _detailsClient = client;
+        using var db = DbFactory.CreateDbContext();
+        _detailsData = await db.SiretDatas.FindAsync(client.SiretDataId.Value);
+        _detailsDialogVisible = true;
+    }
+
+    private async Task RefreshSiretData()
+    {
+        if (_detailsData == null) return;
+        _siretLoading = true;
+        try
+        {
+            var data = await SiretLookup.LookupAsync(_detailsData.Siret, forceRefresh: true);
+            if (data != null)
+            {
+                _detailsData = data;
+                Snackbar.Add("Donnees mises a jour depuis l'API", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Erreur : " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _siretLoading = false;
+        }
+    }
+
+    private async Task DeleteClient(Client client)
+    {
+        if (!_canEdit) return;
+        using var db = DbFactory.CreateDbContext();
+        var hasInvoices = await db.Invoices.AnyAsync(i => i.ClientId == client.Id && i.EntityId == TenantProvider.EntityId);
+        var hasQuotes = await db.Quotes.AnyAsync(q => q.ClientId == client.Id && q.EntityId == TenantProvider.EntityId);
+
+        if (hasInvoices || hasQuotes)
+        {
+            Snackbar.Add("Impossible de supprimer : ce client a des factures ou devis liés.", Severity.Error);
+            return;
+        }
+
+        db.Clients.Remove(client);
+        await db.SaveChangesAsync();
+        Snackbar.Add("Client supprimé", Severity.Info);
+        await LoadData();
+    }
+}

@@ -1,0 +1,747 @@
+@page "/bank-import"
+@inject BankImportService BankService
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ISnackbar Snackbar
+@inject AccountingService Accounting
+@inject IDialogService DialogService
+@inject ITenantProvider TenantProvider
+
+<PageTitle>Import bancaire — FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Import CSV bancaire</MudText>
+
+@if (_canEdit)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudSelect @bind-Value="_selectedProfileId" Label="Profil d'import">
+                    @foreach (var p in _profiles)
+                    {
+                        <MudSelectItem Value="@p.Id">
+                            @p.Nom @(p.IsSystem ? "" : "(personnalisé)")
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4" Class="d-flex align-center gap-2">
+                <MudButton HtmlTag="label"
+                           Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.CloudUpload"
+                           for="csvFileInput"
+                           Disabled="@(_selectedProfileId == 0)">
+                    Charger un fichier CSV
+                </MudButton>
+                <InputFile id="csvFileInput" OnChange="OnFileSelected" accept=".csv"
+                           style="display:none" />
+            </MudItem>
+            <MudItem xs="12" sm="4" Class="d-flex align-center gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="OpenCreateProfile"
+                           StartIcon="@Icons.Material.Filled.Add" Size="Size.Small">
+                    Nouveau profil
+                </MudButton>
+                @if (_selectedProfileId > 0)
+                {
+                    var selected = _profiles.FirstOrDefault(p => p.Id == _selectedProfileId);
+                    @if (selected != null && !selected.IsSystem)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                       OnClick="OpenEditProfile" Color="Color.Default" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                       OnClick="DeleteProfile" Color="Color.Error" />
+                    }
+                }
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+}
+
+@if (_transactions.Any())
+{
+    <MudText Typo="Typo.h6" Class="mb-2">@_transactions.Count transaction(s) importée(s)</MudText>
+
+    <MudDataGrid T="BankTransaction" Items="@_transactions" Dense="true" Hover="true" Striped="true">
+        <Columns>
+            <PropertyColumn Property="x => x.Date" Title="Date" Format="dd/MM/yyyy" />
+            <PropertyColumn Property="x => x.Libelle" Title="Libellé" />
+            <TemplateColumn Title="Montant">
+                <CellTemplate>
+                    <MudText Color="@(context.Item.Montant >= 0 ? Color.Success : Color.Error)">
+                        @context.Item.Montant.ToString("N2") &euro;
+                    </MudText>
+                </CellTemplate>
+            </TemplateColumn>
+            <PropertyColumn Property="x => x.Solde" Title="Solde" Format="N2" />
+        </Columns>
+    </MudDataGrid>
+
+    @if (_canEdit)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmSaveTransactions" Class="mt-4"
+                   StartIcon="@Icons.Material.Filled.Save">
+            Enregistrer les transactions
+        </MudButton>
+    }
+}
+
+<MudDivider Class="my-6" />
+
+@* ── Transactions enregistrées ── *@
+<div class="d-flex align-center gap-4 mb-2">
+    <MudText Typo="Typo.h6">Transactions enregistrées</MudText>
+    @if (_canEdit && _uncategorisedCount > 0 && !_showAutoReview)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Tertiary" OnClick="AutoCategorise" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.AutoFixHigh">
+            Catégoriser automatiquement (@_uncategorisedCount)
+        </MudButton>
+    }
+</div>
+
+@if (_showAutoReview)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="3">
+        <MudText Typo="Typo.h6" Class="mb-3">Vérification des catégories proposées</MudText>
+        <MudText Typo="Typo.body2" Class="mb-3">
+            Vérifiez et modifiez les catégories si nécessaire, puis validez.
+        </MudText>
+
+        <MudDataGrid T="AutoCatItem" Items="@_autoCatItems" Dense="true" Hover="true" Striped="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Transaction.Date" Title="Date" Format="dd/MM/yyyy" />
+                <PropertyColumn Property="x => x.Transaction.Libelle" Title="Libellé" />
+                <TemplateColumn Title="Montant">
+                    <CellTemplate>
+                        <MudText Color="@(context.Item.Transaction.Montant >= 0 ? Color.Success : Color.Error)">
+                            @context.Item.Transaction.Montant.ToString("N2") &euro;
+                        </MudText>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Catégorie proposée">
+                    <CellTemplate>
+                        <MudSelect @bind-Value="context.Item.Category" Dense="true" Margin="Margin.Dense">
+                            <MudSelectItem Value="@AutoCatType.Recette">Recette</MudSelectItem>
+                            <MudSelectItem Value="@AutoCatType.Depense">Dépense</MudSelectItem>
+                            <MudSelectItem Value="@AutoCatType.MvtInterne">Mvt interne</MudSelectItem>
+                        </MudSelect>
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+
+        <div class="d-flex gap-2 mt-4">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmValidateAutoCat"
+                       StartIcon="@Icons.Material.Filled.CheckCircle">
+                Valider
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="CancelAutoReview"
+                       StartIcon="@Icons.Material.Filled.Cancel">
+                Annuler
+            </MudButton>
+        </div>
+    </MudPaper>
+}
+
+@* ── Accordéon par batch d'import ── *@
+@if (_importBatches.Any())
+{
+    <MudExpansionPanels MultiExpansion="true">
+        @foreach (var batch in _importBatches)
+        {
+            var txList = batch.Transactions;
+            var catCount = txList.Count(t => t.Categorise);
+            var uncatCount = txList.Count - catCount;
+
+            <MudExpansionPanel>
+                <TitleContent>
+                    <div class="d-flex align-center gap-4" style="width:100%">
+                        <MudIcon Icon="@Icons.Material.Filled.FileDownload" Size="Size.Small" />
+                        <MudText Typo="Typo.body1">
+                            <strong>Import du @batch.ImportedAt.ToLocalTime().ToString("dd/MM/yyyy à HH:mm")</strong>
+                            — @txList.Count transaction(s)
+                        </MudText>
+                        @if (uncatCount > 0)
+                        {
+                            <MudChip T="string" Color="Color.Warning" Size="Size.Small">@uncatCount non catégorisée(s)</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small">Tout catégorisé</MudChip>
+                        }
+                        <MudText Typo="Typo.body2" Class="ml-auto">
+                            Solde : @(txList.LastOrDefault()?.Solde?.ToString("N2") ?? "—") &euro;
+                        </MudText>
+                    </div>
+                </TitleContent>
+                <ChildContent>
+                    <MudDataGrid T="BankTransaction" Items="@txList" Dense="true" Hover="true" Striped="true">
+                        <Columns>
+                            <PropertyColumn Property="x => x.Date" Title="Date" Format="dd/MM/yyyy" />
+                            <PropertyColumn Property="x => x.Libelle" Title="Libellé" />
+                            <TemplateColumn Title="Montant">
+                                <CellTemplate>
+                                    <MudText Color="@(context.Item.Montant >= 0 ? Color.Success : Color.Error)">
+                                        @context.Item.Montant.ToString("N2") &euro;
+                                    </MudText>
+                                </CellTemplate>
+                            </TemplateColumn>
+                            <TemplateColumn Title="Type">
+                                <CellTemplate>
+                                    @if (context.Item.Categorise)
+                                    {
+                                        @if (context.Item.RevenueId != null)
+                                        {
+                                            <MudChip T="string" Color="Color.Success" Size="Size.Small">Recette</MudChip>
+                                        }
+                                        else if (context.Item.ExpenseId != null)
+                                        {
+                                            <MudChip T="string" Color="Color.Error" Size="Size.Small">Dépense</MudChip>
+                                        }
+                                        else
+                                        {
+                                            <MudChip T="string" Color="Color.Info" Size="Size.Small">Mvt interne</MudChip>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <MudChip T="string" Color="Color.Warning" Size="Size.Small">Non catégorisé</MudChip>
+                                    }
+                                </CellTemplate>
+                            </TemplateColumn>
+                            <TemplateColumn Title="Actions" Sortable="false" Filterable="false">
+                                <CellTemplate>
+                                    @if (_canEdit && !context.Item.Categorise)
+                                    {
+                                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success"
+                                                   StartIcon="@Icons.Material.Filled.TrendingUp"
+                                                   OnClick="() => CategoriseAsRevenue(context.Item)">
+                                            Recette
+                                        </MudButton>
+                                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+                                                   StartIcon="@Icons.Material.Filled.TrendingDown"
+                                                   OnClick="() => CategoriseAsExpense(context.Item)">
+                                            Dépense
+                                        </MudButton>
+                                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Info"
+                                                   StartIcon="@Icons.Material.Filled.SwapHoriz"
+                                                   OnClick="() => MarkAsInternal(context.Item)">
+                                            Mvt interne
+                                        </MudButton>
+                                    }
+                                    else if (_canEdit && context.Item.Categorise)
+                                    {
+                                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning"
+                                                   StartIcon="@Icons.Material.Filled.Undo"
+                                                   OnClick="() => ConfirmExtourne(context.Item)">
+                                            Extourner
+                                        </MudButton>
+                                    }
+                                </CellTemplate>
+                            </TemplateColumn>
+                        </Columns>
+                    </MudDataGrid>
+                </ChildContent>
+            </MudExpansionPanel>
+        }
+    </MudExpansionPanels>
+}
+else
+{
+    <MudText Typo="Typo.body2" Color="Color.Secondary">Aucune transaction importée.</MudText>
+}
+
+@code {
+    private int _selectedProfileId;
+    private List<CsvMappingProfile> _profiles = new();
+    private List<BankTransaction> _transactions = new();
+    private List<BankTransaction> _savedTransactions = new();
+    private List<ImportBatch> _importBatches = new();
+    private int _uncategorisedCount;
+    private bool _canEdit;
+
+    // Auto-categorisation
+    private bool _showAutoReview;
+    private List<AutoCatItem> _autoCatItems = new();
+
+    private enum AutoCatType { Recette, Depense, MvtInterne }
+
+    private class AutoCatItem
+    {
+        public BankTransaction Transaction { get; set; } = null!;
+        public AutoCatType Category { get; set; }
+    }
+
+    private class ImportBatch
+    {
+        public DateTime ImportedAt { get; set; }
+        public List<BankTransaction> Transactions { get; set; } = new();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+        _canEdit = TenantProvider.CanEdit;
+        await LoadProfiles();
+        await LoadSaved();
+    }
+
+    private async Task LoadProfiles()
+    {
+        using var db = DbFactory.CreateDbContext();
+        _profiles = await db.CsvMappingProfiles
+            .Where(p => p.EntityId == TenantProvider.EntityId)
+            .OrderBy(p => p.IsSystem ? 0 : 1)
+            .ThenBy(p => p.Nom)
+            .ToListAsync();
+
+        // Seed des profils système si aucun n'existe
+        if (!_profiles.Any(p => p.IsSystem))
+        {
+            var systemProfiles = BankImportService.CreateSystemProfiles(TenantProvider.EntityId);
+            db.CsvMappingProfiles.AddRange(systemProfiles);
+            await db.SaveChangesAsync();
+            _profiles = await db.CsvMappingProfiles
+                .Where(p => p.EntityId == TenantProvider.EntityId)
+                .OrderBy(p => p.IsSystem ? 0 : 1)
+                .ThenBy(p => p.Nom)
+                .ToListAsync();
+        }
+
+        if (_selectedProfileId == 0 && _profiles.Any())
+            _selectedProfileId = _profiles.First().Id;
+    }
+
+    private async Task LoadSaved()
+    {
+        using var db = DbFactory.CreateDbContext();
+        _savedTransactions = await db.BankTransactions.Where(t => t.EntityId == TenantProvider.EntityId).OrderByDescending(t => t.Date).ToListAsync();
+        _uncategorisedCount = _savedTransactions.Count(t => !t.Categorise);
+
+        // Grouper par batch d'import (arrondi à la minute pour gérer les ms)
+        _importBatches = _savedTransactions
+            .GroupBy(t => new DateTime(t.ImportedAt.Year, t.ImportedAt.Month, t.ImportedAt.Day,
+                                       t.ImportedAt.Hour, t.ImportedAt.Minute, 0, t.ImportedAt.Kind))
+            .OrderByDescending(g => g.Key)
+            .Select(g => new ImportBatch
+            {
+                ImportedAt = g.Key,
+                Transactions = g.OrderByDescending(t => t.Date).ToList()
+            })
+            .ToList();
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        using var reader = new StreamReader(file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024));
+        var content = await reader.ReadToEndAsync();
+
+        var profile = _profiles.FirstOrDefault(p => p.Id == _selectedProfileId);
+        if (profile != null)
+        {
+            _transactions = BankService.ParseWithProfile(profile, content);
+        }
+        else
+        {
+            Snackbar.Add("Veuillez sélectionner un profil d'import", Severity.Warning);
+            return;
+        }
+
+        Snackbar.Add($"{_transactions.Count} transaction(s) lue(s)", Severity.Info);
+    }
+
+    // ── Gestion des profils ──
+
+    private async Task OpenCreateProfile()
+    {
+        var dialog = await DialogService.ShowAsync<CsvMappingDialog>(
+            "Nouveau profil",
+            new DialogParameters(),
+            new DialogOptions { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true });
+
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled && result.Data is CsvMappingProfile newProfile)
+        {
+            newProfile.EntityId = TenantProvider.EntityId;
+            using var db = DbFactory.CreateDbContext();
+            db.CsvMappingProfiles.Add(newProfile);
+            await db.SaveChangesAsync();
+            _selectedProfileId = newProfile.Id;
+            await LoadProfiles();
+            Snackbar.Add($"Profil « {newProfile.Nom} » créé", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditProfile()
+    {
+        var profile = _profiles.FirstOrDefault(p => p.Id == _selectedProfileId);
+        if (profile == null || profile.IsSystem) return;
+
+        var parameters = new DialogParameters { ["ExistingProfile"] = profile };
+        var dialog = await DialogService.ShowAsync<CsvMappingDialog>(
+            "Modifier le profil",
+            parameters,
+            new DialogOptions { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true });
+
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled && result.Data is CsvMappingProfile updated)
+        {
+            using var db = DbFactory.CreateDbContext();
+            var tracked = await db.CsvMappingProfiles.FindAsync(updated.Id);
+            if (tracked != null)
+            {
+                tracked.Nom = updated.Nom;
+                tracked.Separator = updated.Separator;
+                tracked.HeaderRow = updated.HeaderRow;
+                tracked.DateFormat = updated.DateFormat;
+                tracked.DateColumn = updated.DateColumn;
+                tracked.LibelleColumn = updated.LibelleColumn;
+                tracked.MontantColumn = updated.MontantColumn;
+                tracked.DebitColumn = updated.DebitColumn;
+                tracked.CreditColumn = updated.CreditColumn;
+                tracked.SoldeColumn = updated.SoldeColumn;
+                tracked.UpdatedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+            }
+            await LoadProfiles();
+            Snackbar.Add($"Profil « {updated.Nom} » modifié", Severity.Success);
+        }
+    }
+
+    private async Task DeleteProfile()
+    {
+        var profile = _profiles.FirstOrDefault(p => p.Id == _selectedProfileId);
+        if (profile == null || profile.IsSystem) return;
+
+        var confirmed = await Confirm("Supprimer le profil", $"Supprimer le profil « {profile.Nom} » ?");
+        if (!confirmed) return;
+
+        using var db = DbFactory.CreateDbContext();
+        var tracked = await db.CsvMappingProfiles.FindAsync(profile.Id);
+        if (tracked != null)
+        {
+            db.CsvMappingProfiles.Remove(tracked);
+            await db.SaveChangesAsync();
+        }
+
+        _selectedProfileId = 0;
+        await LoadProfiles();
+        Snackbar.Add($"Profil « {profile.Nom} » supprimé", Severity.Info);
+    }
+
+    // ── Confirmation modale ──
+
+    private async Task<bool> Confirm(string title, string message)
+    {
+        var result = await DialogService.ShowMessageBox(
+            title,
+            message,
+            yesText: "Confirmer",
+            cancelText: "Annuler");
+        return result == true;
+    }
+
+    // ── Import ──
+
+    private async Task ConfirmSaveTransactions()
+    {
+        if (!_canEdit) return;
+        using var db = DbFactory.CreateDbContext();
+        var existing = await db.BankTransactions.Where(t => t.EntityId == TenantProvider.EntityId).ToListAsync();
+        var newTransactions = _transactions
+            .Where(t => !existing.Any(e =>
+                e.Date == t.Date &&
+                e.Libelle == t.Libelle &&
+                e.Montant == t.Montant))
+            .ToList();
+        var duplicates = _transactions.Count - newTransactions.Count;
+
+        if (newTransactions.Count == 0)
+        {
+            Snackbar.Add($"Aucune nouvelle transaction — {duplicates} doublon(s) ignoré(s)", Severity.Warning);
+            _transactions.Clear();
+            return;
+        }
+
+        var confirmed = await Confirm(
+            "Enregistrer les transactions",
+            $"Enregistrer {newTransactions.Count} transaction(s) ? {(duplicates > 0 ? $"{duplicates} doublon(s) seront ignoré(s)." : "")}");
+        if (!confirmed) return;
+
+        // Horodater le batch d'import
+        var importTime = DateTime.UtcNow;
+        foreach (var t in newTransactions)
+        {
+            t.ImportedAt = importTime;
+            t.EntityId = TenantProvider.EntityId;
+        }
+
+        db.BankTransactions.AddRange(newTransactions);
+        await db.SaveChangesAsync();
+
+        Snackbar.Add($"{newTransactions.Count} transaction(s) enregistrée(s)", Severity.Success);
+        _transactions.Clear();
+        await LoadSaved();
+    }
+
+    // ── Catégorisation manuelle ──
+
+    private async Task CategoriseAsRevenue(BankTransaction tx)
+    {
+        if (!_canEdit) return;
+        using var db = DbFactory.CreateDbContext();
+        var settings = await db.Entities.FirstAsync(e => e.Id == TenantProvider.EntityId);
+
+        var revenue = new Revenue
+        {
+            Date = tx.Date,
+            Montant = tx.Montant,
+            Description = tx.Libelle,
+            Client = "",
+            ModePaiement = "Virement",
+            Categorie = settings.TypeActivite,
+            EntityId = TenantProvider.EntityId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        db.Revenues.Add(revenue);
+        await db.SaveChangesAsync();
+
+        var tracked = await db.BankTransactions.FindAsync(tx.Id);
+        if (tracked != null)
+        {
+            tracked.Categorise = true;
+            tracked.RevenueId = revenue.Id;
+            await db.SaveChangesAsync();
+        }
+
+        Snackbar.Add("Recette créée", Severity.Success);
+        await LoadSaved();
+    }
+
+    private async Task CategoriseAsExpense(BankTransaction tx)
+    {
+        if (!_canEdit) return;
+        using var db = DbFactory.CreateDbContext();
+
+        var expense = new Expense
+        {
+            Date = tx.Date,
+            Montant = Math.Abs(tx.Montant),
+            Description = tx.Libelle,
+            Fournisseur = "",
+            Categorie = "Autre",
+            EntityId = TenantProvider.EntityId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        db.Expenses.Add(expense);
+        await db.SaveChangesAsync();
+
+        var tracked = await db.BankTransactions.FindAsync(tx.Id);
+        if (tracked != null)
+        {
+            tracked.Categorise = true;
+            tracked.ExpenseId = expense.Id;
+            await db.SaveChangesAsync();
+        }
+
+        Snackbar.Add("Dépense créée", Severity.Success);
+        await LoadSaved();
+    }
+
+    private async Task MarkAsInternal(BankTransaction tx)
+    {
+        if (!_canEdit) return;
+        using var db = DbFactory.CreateDbContext();
+        var tracked = await db.BankTransactions.FindAsync(tx.Id);
+        if (tracked != null)
+        {
+            tracked.Categorise = true;
+            await db.SaveChangesAsync();
+        }
+
+        Snackbar.Add("Marqué comme mouvement interne (hors CA)", Severity.Info);
+        await LoadSaved();
+    }
+
+    // ── Auto-catégorisation ──
+
+    private static readonly string[] InternalKeywords = new[]
+    {
+        "vir sepa recu", "virement recu", "vir recu", "vir emis",
+        "virement emis", "vir sepa emis", "vir inst recu", "vir inst emis"
+    };
+
+    private AutoCatType GuessCategory(BankTransaction tx)
+    {
+        var libelle = tx.Libelle.ToLowerInvariant();
+
+        foreach (var kw in InternalKeywords)
+        {
+            if (libelle.Contains(kw))
+                return AutoCatType.MvtInterne;
+        }
+
+        return tx.Montant >= 0 ? AutoCatType.Recette : AutoCatType.Depense;
+    }
+
+    private void AutoCategorise()
+    {
+        var uncategorised = _savedTransactions.Where(t => !t.Categorise).ToList();
+        _autoCatItems = uncategorised.Select(tx => new AutoCatItem
+        {
+            Transaction = tx,
+            Category = GuessCategory(tx)
+        }).ToList();
+        _showAutoReview = true;
+    }
+
+    private void CancelAutoReview()
+    {
+        _showAutoReview = false;
+        _autoCatItems.Clear();
+    }
+
+    private async Task ConfirmValidateAutoCat()
+    {
+        var confirmed = await Confirm(
+            "Valider la catégorisation",
+            $"Catégoriser {_autoCatItems.Count} transaction(s) ? Cette action créera les recettes et dépenses correspondantes.");
+        if (!confirmed) return;
+        await ValidateAutoCategorisation();
+    }
+
+    private async Task ValidateAutoCategorisation()
+    {
+        if (!_canEdit) return;
+        using var db = DbFactory.CreateDbContext();
+        var settings = await db.Entities.FirstAsync(e => e.Id == TenantProvider.EntityId);
+
+        foreach (var item in _autoCatItems)
+        {
+            var tracked = await db.BankTransactions.FindAsync(item.Transaction.Id);
+            if (tracked == null || tracked.Categorise) continue;
+
+            tracked.Categorise = true;
+
+            switch (item.Category)
+            {
+                case AutoCatType.Recette:
+                    var revenue = new Revenue
+                    {
+                        Date = tracked.Date,
+                        Montant = tracked.Montant,
+                        Description = tracked.Libelle,
+                        Client = "",
+                        ModePaiement = "Virement",
+                        Categorie = settings.TypeActivite,
+                        EntityId = TenantProvider.EntityId,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    db.Revenues.Add(revenue);
+                    await db.SaveChangesAsync();
+                    tracked.RevenueId = revenue.Id;
+                    break;
+
+                case AutoCatType.Depense:
+                    var expense = new Expense
+                    {
+                        Date = tracked.Date,
+                        Montant = Math.Abs(tracked.Montant),
+                        Description = tracked.Libelle,
+                        Fournisseur = "",
+                        Categorie = "Autre",
+                        EntityId = TenantProvider.EntityId,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    db.Expenses.Add(expense);
+                    await db.SaveChangesAsync();
+                    tracked.ExpenseId = expense.Id;
+                    break;
+
+                case AutoCatType.MvtInterne:
+                    break;
+            }
+        }
+
+        await db.SaveChangesAsync();
+
+        Snackbar.Add($"{_autoCatItems.Count} transaction(s) catégorisée(s)", Severity.Success);
+        _showAutoReview = false;
+        _autoCatItems.Clear();
+        await LoadSaved();
+    }
+
+    // ── Extourne (contre-passation) ──
+
+    private async Task ConfirmExtourne(BankTransaction tx)
+    {
+        var type = tx.RevenueId != null ? "recette" : tx.ExpenseId != null ? "dépense" : "mouvement interne";
+        var confirmed = await Confirm(
+            "Extourner cette écriture",
+            $"Créer une écriture inverse pour annuler cette {type} ?\n\n" +
+            $"« {tx.Libelle} » — {tx.Montant:N2} €\n\n" +
+            $"Une contre-passation sera créée à la date du jour.");
+        if (!confirmed) return;
+        await Extourne(tx);
+    }
+
+    private async Task Extourne(BankTransaction tx)
+    {
+        if (!_canEdit) return;
+        using var db = DbFactory.CreateDbContext();
+        var tracked = await db.BankTransactions.FindAsync(tx.Id);
+        if (tracked == null) return;
+
+        if (tracked.RevenueId != null)
+        {
+            var original = await db.Revenues.FindAsync(tracked.RevenueId);
+            if (original != null)
+            {
+                var extourne = new Revenue
+                {
+                    Date = DateTime.Today,
+                    Montant = -original.Montant,
+                    Description = $"[EXTOURNE] {original.Description}",
+                    Client = original.Client,
+                    ModePaiement = original.ModePaiement,
+                    Categorie = original.Categorie,
+                    EntityId = TenantProvider.EntityId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                db.Revenues.Add(extourne);
+            }
+        }
+        else if (tracked.ExpenseId != null)
+        {
+            var original = await db.Expenses.FindAsync(tracked.ExpenseId);
+            if (original != null)
+            {
+                var extourne = new Expense
+                {
+                    Date = DateTime.Today,
+                    Montant = -original.Montant,
+                    Description = $"[EXTOURNE] {original.Description}",
+                    Fournisseur = original.Fournisseur,
+                    Categorie = original.Categorie,
+                    EntityId = TenantProvider.EntityId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                db.Expenses.Add(extourne);
+            }
+        }
+
+        tracked.Categorise = false;
+        tracked.RevenueId = null;
+        tracked.ExpenseId = null;
+
+        await db.SaveChangesAsync();
+        Snackbar.Add("Extourne créée — la transaction est à nouveau non catégorisée", Severity.Success);
+        await LoadSaved();
+    }
+}

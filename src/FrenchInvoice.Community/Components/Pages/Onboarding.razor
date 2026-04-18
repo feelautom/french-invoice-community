@@ -1,0 +1,326 @@
+@page "/onboarding"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ISnackbar Snackbar
+@inject ITenantProvider TenantProvider
+@inject SiretLookupService SiretLookup
+@inject NatureJuridiqueService NatureJuridique
+@inject NavigationManager Navigation
+
+<PageTitle>Configuration — FrenchInvoice</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Class="pa-6" Elevation="3">
+        <MudText Typo="Typo.h4" Class="mb-2">Bienvenue sur FrenchInvoice</MudText>
+        <MudText Typo="Typo.body1" Class="mb-6" Color="Color.Default">
+            Configurons votre entreprise. Entrez votre numero SIRET pour remplir automatiquement les informations.
+        </MudText>
+
+        @* ── Étape 1 : Recherche SIRET ── *@
+        @if (!_siretFound)
+        {
+            <MudGrid>
+                <MudItem xs="8">
+                    <MudTextField @bind-Value="_siretInput" Label="Numero SIRET ou SIREN"
+                                  Placeholder="Ex: 51455400500041" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="4" Class="d-flex align-end">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                               OnClick="SearchSiret" Disabled="@_loading"
+                               StartIcon="@Icons.Material.Filled.Search">
+                        @if (_loading) { <MudProgressCircular Size="Size.Small" Indeterminate="true" /> }
+                        else { <text>Rechercher</text> }
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+
+            <MudText Typo="Typo.caption" Class="mt-4" Color="Color.Default">
+                Le SIRET (14 chiffres) est obligatoire pour utiliser FrenchInvoice.
+            </MudText>
+        }
+        else
+        {
+            @* ── Étape 2 : Infos trouvées + compléments ── *@
+            @if (_siretData != null)
+            {
+                <MudAlert Severity="Severity.Success" Class="mb-4">
+                    Entreprise trouvee : <strong>@_siretData.NomComplet</strong>
+                    — @NatureJuridique.GetLabel(_siretData.NatureJuridique)
+                    — SIRET : <strong>@_siretData.Siret</strong>
+                    (Active)
+                </MudAlert>
+            }
+
+            <MudForm @ref="_form">
+                <MudText Typo="Typo.h6" Class="mb-3">Informations entreprise</MudText>
+
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_entity.Nom" Label="Nom de l'entreprise" Required="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_entity.NumeroSiret" Label="N° SIRET" ReadOnly="true"
+                                      HelperText="Rempli automatiquement par la recherche" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_entity.AdresseSiege" Label="Adresse" />
+                    </MudItem>
+                    <MudItem xs="4">
+                        <MudTextField @bind-Value="_entity.CodePostal" Label="Code postal" />
+                    </MudItem>
+                    <MudItem xs="8">
+                        <MudTextField @bind-Value="_entity.Ville" Label="Ville" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_entity.Telephone" Label="Telephone" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_entity.TvaIntracommunautaire" Label="TVA intracommunautaire" />
+                    </MudItem>
+                </MudGrid>
+
+                <MudDivider Class="my-4" />
+                <MudText Typo="Typo.h6" Class="mb-3">Activite et fiscalite</MudText>
+
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudSelect @bind-Value="_entity.TypeActivite" Label="Type d'activite">
+                            <MudSelectItem Value="ActivityCategory.BICVente">BIC — Vente de marchandises (12.3%)</MudSelectItem>
+                            <MudSelectItem Value="ActivityCategory.BICServices">BIC — Prestations de services (21.2%)</MudSelectItem>
+                            <MudSelectItem Value="ActivityCategory.BNC">BNC — Liberal (21.1%)</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudSelect @bind-Value="_entity.PeriodiciteDeclaration" Label="Periodicite de declaration">
+                            <MudSelectItem Value="DeclarationPeriodicity.Mensuelle">Mensuelle</MudSelectItem>
+                            <MudSelectItem Value="DeclarationPeriodicity.Trimestrielle">Trimestrielle</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudDatePicker @bind-Date="_dateDebut" Label="Date de debut d'activite" DateFormat="dd/MM/yyyy" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="_entity.PlafondCA" Label="Plafond CA (€)" Format="N0" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudSwitch @bind-Value="_entity.FranchiseTVA" Label="Franchise en base de TVA" Color="Color.Primary" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudSwitch @bind-Value="_entity.VersementLiberatoire" Label="Versement liberatoire" Color="Color.Primary" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudSwitch @bind-Value="_entity.BeneficieACRE" Label="Beneficie de l'ACRE" Color="Color.Primary" />
+                    </MudItem>
+                </MudGrid>
+
+                <MudDivider Class="my-4" />
+
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                           OnClick="SaveAndContinue" FullWidth="true" Disabled="@_saving"
+                           StartIcon="@Icons.Material.Filled.Check">
+                    @if (_saving) { <MudProgressCircular Size="Size.Small" Indeterminate="true" /> }
+                    else { <text>Valider et continuer</text> }
+                </MudButton>
+            </MudForm>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private Entity _entity = new();
+    private SiretData? _siretData;
+    private string _siretInput = "";
+    private bool _siretFound;
+    private bool _loading;
+    private bool _saving;
+    private DateTime? _dateDebut;
+    private MudForm? _form;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+
+        if (TenantProvider.IsSuperAdmin)
+        {
+            Navigation.NavigateTo("/admin");
+            return;
+        }
+
+        // Charger l'entité existante
+        using var db = DbFactory.CreateDbContext();
+        var entity = await db.Entities.FindAsync(TenantProvider.EntityId);
+        if (entity == null)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        // Si déjà configurée, rediriger vers le dashboard
+        if (entity.Configured)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        _entity = entity;
+        _dateDebut = entity.DateDebutActivite;
+    }
+
+    private async Task SearchSiret()
+    {
+        var siret = _siretInput.Trim().Replace(" ", "");
+        if (string.IsNullOrWhiteSpace(siret) || !siret.All(char.IsDigit))
+        {
+            Snackbar.Add("Le SIRET ne doit contenir que des chiffres.", Severity.Warning);
+            return;
+        }
+
+        // Accepter SIREN (9) pour la recherche, mais on exigera le SIRET (14) au final
+        if (siret.Length != 9 && siret.Length != 14)
+        {
+            Snackbar.Add("Saisissez un SIRET (14 chiffres) ou un SIREN (9 chiffres) pour la recherche.", Severity.Warning);
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            _siretData = await SiretLookup.LookupAsync(siret);
+            if (_siretData == null)
+            {
+                Snackbar.Add("Aucune entreprise trouvee pour ce numero.", Severity.Warning);
+                return;
+            }
+
+            // Vérifier que l'entité est en activité
+            if (_siretData.EtatAdministratif != "A")
+            {
+                Snackbar.Add("Cette entreprise n'est plus en activite (etat : fermee). Impossible de continuer.", Severity.Error);
+                return;
+            }
+
+            // Vérifier qu'on a bien un SIRET complet (14 chiffres)
+            if (string.IsNullOrEmpty(_siretData.Siret) || _siretData.Siret.Length != 14)
+            {
+                Snackbar.Add("SIRET incomplet dans les donnees gouvernementales. Verifiez votre numero.", Severity.Error);
+                return;
+            }
+
+            // Auto-remplir les champs de l'entité
+            var nom = _siretData.NomCommercial ?? _siretData.Enseigne ?? _siretData.NomComplet;
+            if (string.IsNullOrWhiteSpace(_entity.Nom) || _entity.Nom == "Systeme")
+                _entity.Nom = nom;
+
+            _entity.NumeroSiret = _siretData.Siret;
+            _entity.SiretDataId = _siretData.Id;
+
+            var adresse = $"{_siretData.NumeroVoie} {_siretData.TypeVoie} {_siretData.LibelleVoie}".Trim();
+            if (!string.IsNullOrWhiteSpace(adresse))
+                _entity.AdresseSiege = adresse;
+            if (!string.IsNullOrEmpty(_siretData.CodePostal))
+                _entity.CodePostal = _siretData.CodePostal;
+            if (!string.IsNullOrEmpty(_siretData.LibelleCommune))
+                _entity.Ville = _siretData.LibelleCommune;
+
+            // Date de début d'activité
+            if (_siretData.DateDebutActivite.HasValue)
+            {
+                _entity.DateDebutActivite = _siretData.DateDebutActivite;
+                _dateDebut = _siretData.DateDebutActivite;
+            }
+            else if (_siretData.DateCreationSiege.HasValue)
+            {
+                _entity.DateDebutActivite = _siretData.DateCreationSiege;
+                _dateDebut = _siretData.DateCreationSiege;
+            }
+
+            // Détection du type d'activité depuis le code NAF
+            DetectActivityType(_siretData.ActivitePrincipaleSiege ?? _siretData.ActivitePrincipale);
+
+            _siretFound = true;
+            Snackbar.Add($"Entreprise trouvee : {nom}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Erreur : " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void DetectActivityType(string? codeNaf)
+    {
+        if (string.IsNullOrEmpty(codeNaf)) return;
+
+        // Sections BNC (professions libérales) : codes NAF commençant par certains préfixes
+        // Section M (activités scientifiques et techniques) et Q (santé) sont typiquement BNC
+        var section = codeNaf[..2];
+        // 62.xx = informatique → BNC libéral
+        // 69.xx = juridique/comptable → BNC
+        // 70.xx = conseil → BNC
+        // 71.xx = architecture/ingénierie → BNC
+        // 74.xx = design, photo → BNC
+        // 85.xx = enseignement → BNC
+        // 86.xx = santé → BNC
+        var bncPrefixes = new[] { "62", "69", "70", "71", "74", "85", "86" };
+        if (bncPrefixes.Any(p => section.StartsWith(p)))
+        {
+            _entity.TypeActivite = ActivityCategory.BNC;
+            return;
+        }
+
+        // Sections BIC vente : 10-33 (industrie), 45-47 (commerce)
+        if (int.TryParse(section, out var code))
+        {
+            if ((code >= 10 && code <= 33) || (code >= 45 && code <= 47))
+            {
+                _entity.TypeActivite = ActivityCategory.BICVente;
+                return;
+            }
+        }
+
+        // Par défaut : BIC services
+        _entity.TypeActivite = ActivityCategory.BICServices;
+    }
+
+    private async Task SaveAndContinue()
+    {
+        if (string.IsNullOrWhiteSpace(_entity.Nom))
+        {
+            Snackbar.Add("Le nom de l'entreprise est obligatoire.", Severity.Warning);
+            return;
+        }
+
+        // SIRET obligatoire — 14 chiffres exactement
+        var siret = _entity.NumeroSiret?.Trim().Replace(" ", "") ?? "";
+        if (siret.Length != 14 || !siret.All(char.IsDigit))
+        {
+            Snackbar.Add("Un SIRET valide (14 chiffres) est obligatoire.", Severity.Error);
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            _entity.DateDebutActivite = _dateDebut;
+            _entity.Configured = true;
+            _entity.UpdatedAt = DateTime.UtcNow;
+
+            using var db = DbFactory.CreateDbContext();
+            db.Entities.Update(_entity);
+            await db.SaveChangesAsync();
+
+            Snackbar.Add("Configuration terminee !", Severity.Success);
+            Navigation.NavigateTo("/", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Erreur : " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

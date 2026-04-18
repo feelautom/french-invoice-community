@@ -1,0 +1,41 @@
+@inject ITenantProvider TenantProvider
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+<MudNavMenu>
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">
+        Dashboard
+    </MudNavLink>
+    <MudNavLink Href="/revenues" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.TrendingUp">
+        Recettes
+    </MudNavLink>
+    <MudNavLink Href="/expenses" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.TrendingDown">
+        Depenses
+    </MudNavLink>
+    <MudNavLink Href="/bank-import" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AccountBalance">
+        Import bancaire
+    </MudNavLink>
+    <MudNavLink Href="/clients" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.People">
+        Clients
+    </MudNavLink>
+    <MudNavLink Href="/invoices" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Receipt">
+        Factures
+    </MudNavLink>
+    <MudNavLink Href="/devis" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.RequestQuote">
+        Devis
+    </MudNavLink>
+    <MudNavLink Href="/livre-recettes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.MenuBook">
+        Livre des recettes
+    </MudNavLink>
+    <MudNavLink Href="/registre-achats" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ShoppingCart">
+        Registre des achats
+    </MudNavLink>
+    <MudNavLink Href="/declarations" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.EventNote">
+        Declarations URSSAF
+    </MudNavLink>
+    <MudNavLink Href="/data-export" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ImportExport">
+        Export / Import
+    </MudNavLink>
+    <MudNavLink Href="/settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">
+        Parametres
+    </MudNavLink>
+</MudNavMenu>

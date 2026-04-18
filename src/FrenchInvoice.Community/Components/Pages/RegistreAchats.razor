@@ -1,0 +1,229 @@
+@page "/registre-achats"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ISnackbar Snackbar
+@inject ITenantProvider TenantProvider
+@inject PdfGenerationService PdfService
+@inject IWebHostEnvironment Env
+@inject IJSRuntime JS
+
+<PageTitle>Registre des achats — FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Registre des achats</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudSelect @bind-Value="_selectedYear" Label="Année" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var year in _availableYears)
+                {
+                    <MudSelectItem Value="@year">@year</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3" Class="d-flex align-end gap-2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData"
+                       StartIcon="@Icons.Material.Filled.FilterAlt">Afficher</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportPdf"
+                       StartIcon="@Icons.Material.Filled.PictureAsPdf" Disabled="@(!_expenses.Any())">
+                Export PDF
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudTable T="Expense" Items="@_expenses" Dense="true" Hover="true" Striped="true">
+    <ColGroup>
+        <col style="width:100px;" />
+        <col style="width:150px;" />
+        <col />
+        <col style="width:110px;" />
+        <col style="width:110px;" />
+        <col style="width:120px;" />
+        <col style="width:100px;" />
+    </ColGroup>
+    <HeaderContent>
+        <MudTh>Date</MudTh>
+        <MudTh>Fournisseur</MudTh>
+        <MudTh>Nature de l'achat</MudTh>
+        <MudTh>Montant</MudTh>
+        <MudTh>Mode de reglement</MudTh>
+        <MudTh>Justificatif</MudTh>
+        <MudTh>Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Date">@context.Date.ToString("dd/MM/yyyy")</MudTd>
+        <MudTd DataLabel="Fournisseur">@context.Fournisseur</MudTd>
+        <MudTd DataLabel="Nature">@context.Description</MudTd>
+        <MudTd DataLabel="Montant">
+            <MudText Color="Color.Error">@context.Montant.ToString("N2") &euro;</MudText>
+        </MudTd>
+        <MudTd DataLabel="Mode">@(string.IsNullOrEmpty(context.ModeReglement) ? "—" : context.ModeReglement)</MudTd>
+        <MudTd DataLabel="Justificatif">
+            @if (!string.IsNullOrEmpty(context.Justificatif))
+            {
+                <MudTooltip Text="@context.Justificatif">
+                    <MudIconButton Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="() => DownloadJustificatif(context)" />
+                </MudTooltip>
+            }
+            else if (_canEdit)
+            {
+                <MudFileUpload T="IBrowserFile" FilesChanged="(f) => UploadJustificatif(context, f)" Accept=".pdf,.jpg,.jpeg,.png">
+                    <ActivatorContent>
+                        <MudIconButton Icon="@Icons.Material.Filled.Upload" Size="Size.Small" Color="Color.Default" />
+                    </ActivatorContent>
+                </MudFileUpload>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2">—</MudText>
+            }
+        </MudTd>
+        <MudTd DataLabel="Actions">
+            @if (_canEdit && !string.IsNullOrEmpty(context.Justificatif))
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.DeleteForever" Size="Size.Small" Color="Color.Error"
+                               OnClick="() => RemoveJustificatif(context)" Title="Supprimer le justificatif" />
+            }
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+<MudPaper Class="pa-4 mt-2" Elevation="1">
+    <MudGrid>
+        <MudItem xs="6">
+            <MudText Typo="Typo.h6">Total @_selectedYear : @_total.ToString("N2") &euro;</MudText>
+        </MudItem>
+        <MudItem xs="6" Class="d-flex justify-end">
+            <MudText Typo="Typo.body1">@_expenses.Count achat(s)</MudText>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@code {
+    private List<Expense> _expenses = new();
+    private int _selectedYear = DateTime.Today.Year;
+    private List<int> _availableYears = new();
+    private decimal _total;
+    private bool _canEdit;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+        _canEdit = TenantProvider.CanEdit;
+        await LoadAvailableYears();
+        await LoadData();
+    }
+
+    private async Task LoadAvailableYears()
+    {
+        using var db = DbFactory.CreateDbContext();
+        var years = await db.Expenses
+            .Where(e => e.EntityId == TenantProvider.EntityId)
+            .Select(e => e.Date.Year)
+            .Distinct()
+            .OrderByDescending(y => y)
+            .ToListAsync();
+
+        _availableYears = years.Any() ? years : new List<int> { DateTime.Today.Year };
+        if (!_availableYears.Contains(_selectedYear))
+            _selectedYear = _availableYears.First();
+    }
+
+    private async Task LoadData()
+    {
+        using var db = DbFactory.CreateDbContext();
+        _expenses = await db.Expenses
+            .Where(e => e.EntityId == TenantProvider.EntityId
+                        && e.Date.Year == _selectedYear)
+            .OrderBy(e => e.Date)
+            .ToListAsync();
+        _total = _expenses.Sum(e => e.Montant);
+    }
+
+    private async Task UploadJustificatif(Expense expense, IBrowserFile file)
+    {
+        if (!_canEdit || file == null) return;
+
+        var dir = Path.Combine(Env.ContentRootPath, "Data", "justificatifs", "achats");
+        Directory.CreateDirectory(dir);
+
+        var ext = Path.GetExtension(file.Name);
+        var fileName = $"ach_{expense.Id}_{DateTime.UtcNow:yyyyMMddHHmmss}{ext}";
+        var filePath = Path.Combine(dir, fileName);
+
+        using (var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024))
+        using (var fs = new FileStream(filePath, FileMode.Create))
+        {
+            await stream.CopyToAsync(fs);
+        }
+
+        using var db = DbFactory.CreateDbContext();
+        var entity = await db.Expenses.FindAsync(expense.Id);
+        if (entity != null)
+        {
+            entity.Justificatif = fileName;
+            entity.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        Snackbar.Add("Justificatif ajouté", Severity.Success);
+        await LoadData();
+    }
+
+    private async Task DownloadJustificatif(Expense expense)
+    {
+        if (string.IsNullOrEmpty(expense.Justificatif)) return;
+
+        var filePath = Path.Combine(Env.ContentRootPath, "Data", "justificatifs", "achats", expense.Justificatif);
+        if (!File.Exists(filePath))
+        {
+            Snackbar.Add("Fichier introuvable", Severity.Error);
+            return;
+        }
+
+        var bytes = await File.ReadAllBytesAsync(filePath);
+        var contentType = expense.Justificatif.EndsWith(".pdf") ? "application/pdf" : "image/jpeg";
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", expense.Justificatif, contentType, base64);
+    }
+
+    private async Task RemoveJustificatif(Expense expense)
+    {
+        if (!_canEdit) return;
+
+        if (!string.IsNullOrEmpty(expense.Justificatif))
+        {
+            var filePath = Path.Combine(Env.ContentRootPath, "Data", "justificatifs", "achats", expense.Justificatif);
+            if (File.Exists(filePath))
+                File.Delete(filePath);
+        }
+
+        using var db = DbFactory.CreateDbContext();
+        var entity = await db.Expenses.FindAsync(expense.Id);
+        if (entity != null)
+        {
+            entity.Justificatif = null;
+            entity.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        Snackbar.Add("Justificatif supprimé", Severity.Info);
+        await LoadData();
+    }
+
+    private async Task ExportPdf()
+    {
+        if (!_expenses.Any()) return;
+
+        using var db = DbFactory.CreateDbContext();
+        var settings = await db.Entities.FindAsync(TenantProvider.EntityId);
+        if (settings == null) return;
+
+        var bytes = PdfService.GenererRegistreAchatsPdf(_expenses, settings, _selectedYear);
+        var base64 = Convert.ToBase64String(bytes);
+        var fileName = $"Registre_Achats_{_selectedYear}.pdf";
+        await JS.InvokeVoidAsync("downloadFile", fileName, "application/pdf", base64);
+        Snackbar.Add("PDF généré", Severity.Success);
+    }
+}

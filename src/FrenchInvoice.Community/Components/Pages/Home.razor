@@ -1,0 +1,257 @@
+@page "/"
+@inject AccountingService Accounting
+@inject AlertService Alerts
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ITenantProvider TenantProvider
+@inject IEditionProvider EditionProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Dashboard — FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Dashboard</MudText>
+
+@if (_alerts.Any())
+{
+    @foreach (var alert in _alerts)
+    {
+        <MudAlert Severity="@MapSeverity(alert.Severity)" Class="mb-2">@alert.Message</MudAlert>
+    }
+}
+
+@* Ligne 1 : Trésorerie + CA *@
+<MudGrid>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Color="Color.Info">Trésorerie</MudText>
+            <MudText Typo="Typo.h4">@_tresorerie.ToString("N2") &euro;</MudText>
+            <MudText Typo="Typo.caption">Solde dernier relevé</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Color="Color.Tertiary">Apports personnels</MudText>
+            <MudText Typo="Typo.h4">@_apports.ToString("N2") &euro;</MudText>
+            <MudText Typo="Typo.caption">Mouvements internes (hors CA)</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Color="Color.Primary">CA du mois</MudText>
+            <MudText Typo="Typo.h4">@_summaryMonth?.CA.ToString("N2") &euro;</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Color="Color.Primary">CA de l'année</MudText>
+            <MudText Typo="Typo.h4">@_summaryYear?.CA.ToString("N2") &euro;</MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@* Ligne 2 : Détail charges année *@
+<MudGrid Class="mt-4">
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Color="Color.Warning">Cotisations URSSAF</MudText>
+            <MudText Typo="Typo.h4">@_summaryYear?.Cotisations.ToString("N2") &euro;</MudText>
+            <MudText Typo="Typo.caption">Taux effectif : @_tauxEffectif.ToString("N1")%@(_acreActive ? " (ACRE)" : "")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Color="Color.Warning">Versement libératoire IR</MudText>
+            <MudText Typo="Typo.h4">@_summaryYear?.VersementLiberatoire.ToString("N2") &euro;</MudText>
+            <MudText Typo="Typo.caption">@(_settings?.VersementLiberatoire == true ? $"{_settings.TauxLiberatoire}%" : "Désactivé")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Charges fixes</MudText>
+            <MudText Typo="Typo.h4">@_summaryYear?.ChargesFixes.ToString("N2") &euro;</MudText>
+            <MudText Typo="Typo.caption">@(_summaryYear != null ? $"{(_summaryYear.ChargesFixes / 12):N2} €/mois" : "")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Color="Color.Success">Bénéfice net estimé</MudText>
+            <MudText Typo="Typo.h4">@_summaryYear?.BeneficeNet.ToString("N2") &euro;</MudText>
+            <MudText Typo="Typo.caption">CA - toutes charges</MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@* Ligne 3 : Plafond + URSSAF *@
+<MudGrid Class="mt-4">
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-2">Progression vers le plafond</MudText>
+            <MudProgressLinear Color="@(_progressPercent > 90 ? Color.Error : Color.Primary)"
+                               Value="@_progressPercent" Class="my-2" />
+            <MudText Typo="Typo.body2">
+                @_summaryYear?.CA.ToString("N2") &euro; / @_settings?.PlafondCA.ToString("N2") &euro;
+                (@_progressPercent.ToString("N1")%)
+            </MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-2">Prochaine échéance URSSAF</MudText>
+            @if (_nextDeclaration != null)
+            {
+                <MudText Typo="Typo.body1">
+                    <strong>@_nextDeclaration.Periode</strong> — @_nextDeclaration.DateLimite.ToString("dd/MM/yyyy")
+                </MudText>
+                <MudText Typo="Typo.body2" Color="Color.Primary">
+                    CA : @_nextDeclaration.MontantCA.ToString("N2") &euro; —
+                    Cotisations : @_nextDeclaration.MontantCotisations.ToString("N2") &euro;
+                </MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2">Aucune échéance à venir</MudText>
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@* Aide à la déclaration *@
+@if (_summaryMonth != null)
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-3">Aide à la déclaration — @DateTime.Today.ToString("MMMM yyyy")</MudText>
+        <MudSimpleTable Dense="true" Bordered="true" Style="max-width: 500px;">
+            <tbody>
+                <tr>
+                    <td>CA HT du mois</td>
+                    <td class="text-right"><strong>@_summaryMonth.CA.ToString("N2") &euro;</strong></td>
+                </tr>
+                <tr>
+                    <td>Cotisations URSSAF (@_tauxEffectif.ToString("N1")%)</td>
+                    <td class="text-right">@_summaryMonth.Cotisations.ToString("N2") &euro;</td>
+                </tr>
+                @if (_settings?.VersementLiberatoire == true)
+                {
+                    <tr>
+                        <td>Versement libératoire IR (@_settings.TauxLiberatoire%)</td>
+                        <td class="text-right">@_summaryMonth.VersementLiberatoire.ToString("N2") &euro;</td>
+                    </tr>
+                }
+                <tr style="border-top: 2px solid;">
+                    <td><strong>Total à payer</strong></td>
+                    <td class="text-right"><strong>@((_summaryMonth.Cotisations + _summaryMonth.VersementLiberatoire).ToString("N2")) &euro;</strong></td>
+                </tr>
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+}
+
+@* Résumé des charges *@
+@if (_summaryYear != null)
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-3">Résumé annuel des charges</MudText>
+        <MudSimpleTable Dense="true" Bordered="true" Style="max-width: 500px;">
+            <tbody>
+                <tr>
+                    <td>Cotisations URSSAF</td>
+                    <td class="text-right">@_summaryYear.Cotisations.ToString("N2") &euro;</td>
+                </tr>
+                <tr>
+                    <td>Versement libératoire IR</td>
+                    <td class="text-right">@_summaryYear.VersementLiberatoire.ToString("N2") &euro;</td>
+                </tr>
+                <tr>
+                    <td>Frais variables</td>
+                    <td class="text-right">@_summaryYear.FraisVariables.ToString("N2") &euro;</td>
+                </tr>
+                <tr>
+                    <td>Charges fixes</td>
+                    <td class="text-right">@_summaryYear.ChargesFixes.ToString("N2") &euro;</td>
+                </tr>
+                <tr>
+                    <td>Frais de plateforme (Stancer/Stripe)</td>
+                    <td class="text-right">@_summaryYear.FraisPlateforme.ToString("N2") &euro;</td>
+                </tr>
+                <tr style="border-top: 2px solid;">
+                    <td><strong>Total charges</strong></td>
+                    <td class="text-right"><strong>@_summaryYear.TotalCharges.ToString("N2") &euro;</strong></td>
+                </tr>
+                <tr>
+                    <td><strong>Bénéfice net</strong></td>
+                    <td class="text-right" style="color: @(_summaryYear.BeneficeNet >= 0 ? "green" : "red");">
+                        <strong>@_summaryYear.BeneficeNet.ToString("N2") &euro;</strong>
+                    </td>
+                </tr>
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+}
+
+@code {
+    private DashboardSummary? _summaryMonth, _summaryYear;
+    private decimal _tresorerie, _apports;
+    private decimal _tauxEffectif;
+    private bool _acreActive;
+    private double _progressPercent;
+    private Entity? _settings;
+    private Declaration? _nextDeclaration;
+    private List<AlertInfo> _alerts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+        if (TenantProvider.IsSuperAdmin)
+        {
+            Navigation.NavigateTo("/admin");
+            return;
+        }
+
+        // Rediriger si l'entité n'est pas configurée
+        using var dbCheck = DbFactory.CreateDbContext();
+        var entity = await dbCheck.Entities.FindAsync(TenantProvider.EntityId);
+        if (entity != null && !entity.Configured)
+        {
+            Navigation.NavigateTo(EditionProvider.IsCommunity ? "/settings" : "/onboarding");
+            return;
+        }
+        var now = DateTime.Today;
+
+        _settings = await Accounting.GetEntityAsync();
+        _summaryMonth = await Accounting.GetDashboardSummaryAsync(now.Year, now.Month);
+        _summaryYear = await Accounting.GetDashboardSummaryAsync(now.Year);
+
+        _tauxEffectif = Accounting.GetTauxCotisationEffectif(_settings);
+        _acreActive = _settings.BeneficieACRE && _settings.DateDebutActivite.HasValue
+            && DateTime.Today < _settings.DateDebutActivite.Value.AddYears(1);
+
+        _progressPercent = _settings.PlafondCA > 0 ? (double)(_summaryYear.CA / _settings.PlafondCA * 100) : 0;
+        if (_progressPercent > 100) _progressPercent = 100;
+
+        _alerts = await Alerts.GetActiveAlertsAsync();
+
+        using var db = DbFactory.CreateDbContext();
+
+        var lastWithBalance = await db.BankTransactions
+            .Where(t => t.EntityId == TenantProvider.EntityId && t.Solde != null)
+            .OrderByDescending(t => t.Date)
+            .FirstOrDefaultAsync();
+        _tresorerie = lastWithBalance?.Solde ?? 0;
+
+        // Solde net des mouvements internes (positifs + négatifs)
+        _apports = await db.BankTransactions
+            .Where(t => t.EntityId == TenantProvider.EntityId && t.Categorise && t.RevenueId == null && t.ExpenseId == null)
+            .SumAsync(t => (decimal?)t.Montant) ?? 0;
+
+        _nextDeclaration = await db.Declarations
+            .Where(d => d.EntityId == TenantProvider.EntityId && d.Statut == DeclarationStatut.AFaire && d.DateLimite >= DateTime.Today)
+            .OrderBy(d => d.DateLimite)
+            .FirstOrDefaultAsync();
+    }
+
+    private Severity MapSeverity(AlertSeverity s) => s switch
+    {
+        AlertSeverity.Error => Severity.Error,
+        AlertSeverity.Warning => Severity.Warning,
+        _ => Severity.Info
+    };
+}

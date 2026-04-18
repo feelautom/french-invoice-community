@@ -1,0 +1,40 @@
+@page "/Error"
+@using System.Diagnostics
+
+<PageTitle>Erreur — FrenchInvoice</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Elevation="3" Class="pa-8 d-flex flex-column align-center">
+        <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Color="Color.Error" Size="Size.Large" Class="mb-4" Style="font-size: 4rem;" />
+        <MudText Typo="Typo.h4" Class="mb-2">Une erreur est survenue</MudText>
+        <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4 text-center">
+            Nous sommes désolés, une erreur inattendue s'est produite lors du traitement de votre demande.
+        </MudText>
+
+        @if (ShowRequestId)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-4" Dense="true">
+                <strong>Référence :</strong> @RequestId
+            </MudAlert>
+        }
+
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-6 text-center">
+            Si le problème persiste, veuillez noter la référence ci-dessus et contacter le support.
+        </MudText>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/" StartIcon="@Icons.Material.Filled.Home">
+            Retour à l'accueil
+        </MudButton>
+    </MudPaper>
+</MudContainer>
+
+@code{
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

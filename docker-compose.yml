@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "5000:8080"
+    volumes:
+      - app-data:/app/Data
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+
+volumes:
+  app-data:

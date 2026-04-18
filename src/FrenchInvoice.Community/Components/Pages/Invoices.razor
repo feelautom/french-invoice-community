@@ -1,0 +1,451 @@
+@page "/invoices"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject InvoiceService InvoiceService
+@inject ISnackbar Snackbar
+@inject ITenantProvider TenantProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Factures — FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Factures</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Label="Date début" @bind-Date="_filterDateStart" DateFormat="dd/MM/yyyy"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Label="Date fin" @bind-Date="_filterDateEnd" DateFormat="dd/MM/yyyy"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="InvoiceStatus?" Label="Statut" @bind-Value="_filterStatut" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Clearable="true">
+                <MudSelectItem T="InvoiceStatus?" Value="InvoiceStatus.Brouillon">Brouillon</MudSelectItem>
+                <MudSelectItem T="InvoiceStatus?" Value="InvoiceStatus.Envoyee">Envoyée</MudSelectItem>
+                <MudSelectItem T="InvoiceStatus?" Value="InvoiceStatus.Payee">Payée</MudSelectItem>
+                <MudSelectItem T="InvoiceStatus?" Value="InvoiceStatus.Annulee">Annulée</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3" Class="d-flex align-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData"
+                       StartIcon="@Icons.Material.Filled.FilterAlt">Filtrer</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_canEdit)
+{
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenAddDialog" Class="mb-4"
+               StartIcon="@Icons.Material.Filled.Add">
+        Nouvelle facture
+    </MudButton>
+}
+
+<MudTable T="Invoice" Items="@_invoices" Dense="true" Hover="true" Striped="true">
+    <ColGroup>
+        <col style="width:140px;" />
+        <col style="width:110px;" />
+        <col />
+        <col style="width:120px;" />
+        <col style="width:100px;" />
+        <col style="width:200px;" />
+    </ColGroup>
+    <HeaderContent>
+        <MudTh>Numéro</MudTh>
+        <MudTh>Date</MudTh>
+        <MudTh>Client</MudTh>
+        <MudTh>Montant TTC</MudTh>
+        <MudTh>Statut</MudTh>
+        <MudTh>Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Numéro">@(string.IsNullOrEmpty(context.Numero) ? "—" : context.Numero)</MudTd>
+        <MudTd DataLabel="Date">@context.DateEmission.ToString("dd/MM/yyyy")</MudTd>
+        <MudTd DataLabel="Client">@context.Client?.Nom</MudTd>
+        <MudTd DataLabel="Montant TTC">@context.MontantTTC.ToString("N2") &euro;</MudTd>
+        <MudTd DataLabel="Statut">
+            <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Statut)">
+                @context.Statut
+            </MudChip>
+        </MudTd>
+        <MudTd DataLabel="Actions">
+            @if (_canEdit && context.Statut == InvoiceStatus.Brouillon)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                               OnClick="() => OpenEditDialog(context)" Title="Modifier" />
+                <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Primary"
+                               OnClick="() => Finaliser(context)" Title="Finaliser" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="() => Delete(context)" Title="Supprimer" />
+            }
+            @if (_canEdit && context.Statut == InvoiceStatus.Envoyee)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success"
+                               OnClick="() => MarquerPayee(context)" Title="Marquer payée" />
+                <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error"
+                               OnClick="() => Annuler(context)" Title="Annuler" />
+            }
+            @if (!string.IsNullOrEmpty(context.CheminPdf))
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" Color="Color.Info"
+                               OnClick="() => DownloadPdf(context)" Title="Télécharger PDF" />
+            }
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@* Dialog création/édition *@
+<MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_isEdit ? "Modifier la facture" : "Nouvelle facture")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudAutocomplete T="Client" Label="Client" @bind-Value="_selectedClient" SearchFunc="SearchClients"
+                             ToStringFunc="@(c => c?.Nom ?? "")" Required="true" />
+            <MudGrid>
+                <MudItem xs="6">
+                    <MudDatePicker Label="Date d'émission" @bind-Date="_editDateEmission" DateFormat="dd/MM/yyyy" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudDatePicker Label="Date d'échéance" @bind-Date="_editDateEcheance" DateFormat="dd/MM/yyyy" />
+                </MudItem>
+            </MudGrid>
+            <MudGrid>
+                <MudItem xs="6" sm="4">
+                    <MudSelect @bind-Value="_editTypeFacture" Label="Type de document">
+                        <MudSelectItem Value="InvoiceType.Facture">Facture</MudSelectItem>
+                        <MudSelectItem Value="InvoiceType.Avoir">Avoir</MudSelectItem>
+                        <MudSelectItem Value="InvoiceType.Acompte">Acompte</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" sm="4">
+                    <MudTextField @bind-Value="_editNumeroCommande" Label="N° bon de commande" HelperText="Optionnel" />
+                </MudItem>
+            </MudGrid>
+            <MudGrid>
+                <MudItem xs="6">
+                    <MudDatePicker Label="Début période" @bind-Date="_editDebutPeriode" DateFormat="dd/MM/yyyy"
+                                   Clearable="true" HelperText="Optionnel" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudDatePicker Label="Fin période" @bind-Date="_editFinPeriode" DateFormat="dd/MM/yyyy"
+                                   Clearable="true"
+                                   Error="@(_editDebutPeriode.HasValue && _editFinPeriode.HasValue && _editFinPeriode < _editDebutPeriode)"
+                                   ErrorText="Doit être ≥ date de début"
+                                   HelperText="Optionnel" />
+                </MudItem>
+            </MudGrid>
+            <MudTextField @bind-Value="_editNotes" Label="Notes (optionnel)" Lines="2" />
+
+            <MudText Typo="Typo.h6" Class="mt-4 mb-2">Lignes</MudText>
+            @for (var i = 0; i < _editLignes.Count; i++)
+            {
+                var idx = i;
+                <MudPaper Class="pa-3 mb-2" Elevation="0" Outlined="true">
+                    <MudGrid>
+                        <MudItem xs="12" sm="5">
+                            <MudTextField @bind-Value="_editLignes[idx].Description" Label="Description" Required="true" />
+                        </MudItem>
+                        <MudItem xs="6" sm="2">
+                            <MudNumericField @bind-Value="_editLignes[idx].Quantite" Label="Qté" Format="G" Min="0.01m" />
+                        </MudItem>
+                        <MudItem xs="6" sm="2">
+                            <MudNumericField @bind-Value="_editLignes[idx].PrixUnitaire" Label="PU HT (€)" Format="N2" />
+                        </MudItem>
+                        <MudItem xs="6" sm="2">
+                            <MudNumericField @bind-Value="_editLignes[idx].TauxTVA" Label="TVA %" Format="N1"
+                                             Disabled="_franchiseTVA" />
+                        </MudItem>
+                        <MudItem xs="6" sm="1" Class="d-flex align-end">
+                            <MudIconButton Icon="@Icons.Material.Filled.RemoveCircle" Color="Color.Error"
+                                           OnClick="() => _editLignes.RemoveAt(idx)" Disabled="_editLignes.Count <= 1" />
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="AddLigne"
+                       StartIcon="@Icons.Material.Filled.Add" Class="mb-2">
+                Ajouter une ligne
+            </MudButton>
+
+            @* Totaux en temps réel *@
+            <MudPaper Class="pa-3 mt-2" Elevation="1">
+                <MudText>Total HT : <strong>@CalculerTotalHT().ToString("N2") €</strong></MudText>
+                <MudText>TVA : <strong>@CalculerTotalTVA().ToString("N2") €</strong></MudText>
+                <MudText Typo="Typo.h6">Total TTC : @CalculerTotalTTC().ToString("N2") €</MudText>
+            </MudPaper>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _dialogVisible = false">Annuler</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveInvoice">Enregistrer</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* Dialog paiement *@
+<MudDialog @bind-Visible="_payDialogVisible" Options="_smallDialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Marquer comme payée</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudSelect @bind-Value="_payModePaiement" Label="Mode de paiement">
+            <MudSelectItem Value="@("Virement")">Virement</MudSelectItem>
+            <MudSelectItem Value="@("Chèque")">Chèque</MudSelectItem>
+            <MudSelectItem Value="@("Espèces")">Espèces</MudSelectItem>
+            <MudSelectItem Value="@("Carte bancaire")">Carte bancaire</MudSelectItem>
+            <MudSelectItem Value="@("PayPal")">PayPal</MudSelectItem>
+        </MudSelect>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _payDialogVisible = false">Annuler</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ConfirmerPaiement">Confirmer</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Invoice> _invoices = new();
+    private List<Client> _allClients = new();
+    private DateTime? _filterDateStart = new DateTime(DateTime.Today.Year, 1, 1);
+    private DateTime? _filterDateEnd;
+    private InvoiceStatus? _filterStatut;
+
+    // Dialog édition
+    private bool _dialogVisible;
+    private bool _isEdit;
+    private int _editId;
+    private MudForm? _form;
+    private Client? _selectedClient;
+    private DateTime? _editDateEmission = DateTime.Today;
+    private DateTime? _editDateEcheance = DateTime.Today.AddDays(30);
+    private string? _editNotes;
+    private InvoiceType _editTypeFacture = InvoiceType.Facture;
+    private string? _editNumeroCommande;
+    private DateTime? _editDebutPeriode;
+    private DateTime? _editFinPeriode;
+    private List<InvoiceLine> _editLignes = new() { new InvoiceLine { Quantite = 1 } };
+    private bool _franchiseTVA;
+    private bool _canEdit;
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+    // Dialog paiement
+    private bool _payDialogVisible;
+    private int _payInvoiceId;
+    private string _payModePaiement = "Virement";
+    private readonly DialogOptions _smallDialogOptions = new() { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+        _canEdit = TenantProvider.CanEdit;
+        using var db = DbFactory.CreateDbContext();
+        var settings = await db.Entities.FirstAsync(e => e.Id == TenantProvider.EntityId);
+        _franchiseTVA = settings.FranchiseTVA;
+        _allClients = await db.Clients.Where(c => c.EntityId == TenantProvider.EntityId).OrderBy(c => c.Nom).ToListAsync();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _invoices = await InvoiceService.GetAllAsync(_filterStatut, null, _filterDateStart, _filterDateEnd);
+    }
+
+    private static Color GetStatusColor(InvoiceStatus statut) => statut switch
+    {
+        InvoiceStatus.Brouillon => Color.Default,
+        InvoiceStatus.Envoyee => Color.Info,
+        InvoiceStatus.Payee => Color.Success,
+        InvoiceStatus.Annulee => Color.Error,
+        _ => Color.Default
+    };
+
+    private Task<IEnumerable<Client>> SearchClients(string? value, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(value))
+            return Task.FromResult(_allClients.AsEnumerable());
+        return Task.FromResult(_allClients.Where(c =>
+            c.Nom.Contains(value, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private void OpenAddDialog()
+    {
+        _isEdit = false;
+        _editId = 0;
+        _selectedClient = null;
+        _editDateEmission = DateTime.Today;
+        _editDateEcheance = DateTime.Today.AddDays(30);
+        _editNotes = null;
+        _editTypeFacture = InvoiceType.Facture;
+        _editNumeroCommande = null;
+        _editDebutPeriode = null;
+        _editFinPeriode = null;
+        _editLignes = new List<InvoiceLine> { new() { Quantite = 1, TauxTVA = _franchiseTVA ? 0 : 20 } };
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(Invoice inv)
+    {
+        _isEdit = true;
+        _editId = inv.Id;
+        _selectedClient = inv.Client;
+        _editDateEmission = inv.DateEmission;
+        _editDateEcheance = inv.DateEcheance;
+        _editNotes = inv.Notes;
+        _editTypeFacture = inv.TypeFacture;
+        _editNumeroCommande = inv.NumeroCommande;
+        _editDebutPeriode = inv.DebutPeriode;
+        _editFinPeriode = inv.FinPeriode;
+        _editLignes = inv.Lignes.Select(l => new InvoiceLine
+        {
+            Description = l.Description,
+            Quantite = l.Quantite,
+            PrixUnitaire = l.PrixUnitaire,
+            TauxTVA = l.TauxTVA
+        }).ToList();
+        if (_editLignes.Count == 0)
+            _editLignes.Add(new InvoiceLine { Quantite = 1, TauxTVA = _franchiseTVA ? 0 : 20 });
+        _dialogVisible = true;
+    }
+
+    private void AddLigne()
+    {
+        _editLignes.Add(new InvoiceLine { Quantite = 1, TauxTVA = _franchiseTVA ? 0 : 20 });
+    }
+
+    private decimal CalculerTotalHT() => _editLignes.Sum(l => Math.Round(l.Quantite * l.PrixUnitaire, 2));
+    private decimal CalculerTotalTVA() => _editLignes.Sum(l => Math.Round(l.Quantite * l.PrixUnitaire * l.TauxTVA / 100m, 2));
+    private decimal CalculerTotalTTC() => CalculerTotalHT() + CalculerTotalTVA();
+
+    private async Task SaveInvoice()
+    {
+        if (!_canEdit) return;
+        if (_selectedClient == null)
+        {
+            Snackbar.Add("Veuillez sélectionner un client.", Severity.Warning);
+            return;
+        }
+        if (_editDebutPeriode.HasValue && _editFinPeriode.HasValue && _editFinPeriode < _editDebutPeriode)
+        {
+            Snackbar.Add("La date de fin de période doit être supérieure ou égale à la date de début.", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            var invoice = new Invoice
+            {
+                Id = _editId,
+                ClientId = _selectedClient.Id,
+                DateEmission = _editDateEmission ?? DateTime.Today,
+                DateEcheance = _editDateEcheance ?? DateTime.Today.AddDays(30),
+                TypeFacture = _editTypeFacture,
+                NumeroCommande = _editNumeroCommande,
+                DebutPeriode = _editDebutPeriode,
+                FinPeriode = _editFinPeriode,
+                Notes = _editNotes,
+                Lignes = _editLignes.Select(l => new InvoiceLine
+                {
+                    Description = l.Description,
+                    Quantite = l.Quantite,
+                    PrixUnitaire = l.PrixUnitaire,
+                    TauxTVA = l.TauxTVA
+                }).ToList()
+            };
+
+            if (_isEdit)
+                await InvoiceService.UpdateAsync(invoice);
+            else
+                await InvoiceService.CreateAsync(invoice);
+
+            _dialogVisible = false;
+            Snackbar.Add(_isEdit ? "Facture modifiée" : "Facture créée", Severity.Success);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task Finaliser(Invoice inv)
+    {
+        if (!_canEdit) return;
+        try
+        {
+            await InvoiceService.FinaliserAsync(inv.Id);
+            Snackbar.Add($"Facture finalisée et PDF généré", Severity.Success);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private void MarquerPayee(Invoice inv)
+    {
+        _payInvoiceId = inv.Id;
+        _payModePaiement = "Virement";
+        _payDialogVisible = true;
+    }
+
+    private async Task ConfirmerPaiement()
+    {
+        if (!_canEdit) return;
+        try
+        {
+            await InvoiceService.MarquerPayeeAsync(_payInvoiceId, _payModePaiement);
+            _payDialogVisible = false;
+            Snackbar.Add("Facture marquée comme payée — recette créée", Severity.Success);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task Annuler(Invoice inv)
+    {
+        if (!_canEdit) return;
+        try
+        {
+            await InvoiceService.AnnulerAsync(inv.Id);
+            Snackbar.Add("Facture annulée", Severity.Warning);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task Delete(Invoice inv)
+    {
+        if (!_canEdit) return;
+        try
+        {
+            await InvoiceService.DeleteAsync(inv.Id);
+            Snackbar.Add("Brouillon supprimé", Severity.Info);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task DownloadPdf(Invoice inv)
+    {
+        if (string.IsNullOrEmpty(inv.CheminPdf))
+        {
+            Snackbar.Add("PDF introuvable", Severity.Error);
+            return;
+        }
+        var url = Navigation.ToAbsoluteUri($"/download/invoices/{inv.Id}/pdf").ToString();
+        await JS.InvokeVoidAsync("open", url, "_blank");
+    }
+}

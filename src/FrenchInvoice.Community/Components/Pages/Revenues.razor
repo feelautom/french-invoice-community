@@ -1,0 +1,242 @@
+@page "/revenues"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ISnackbar Snackbar
+@inject ITenantProvider TenantProvider
+
+<PageTitle>Recettes — FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Recettes</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="4" md="3">
+            <MudDatePicker Label="Date début" @bind-Date="_filterDateStart" DateFormat="dd/MM/yyyy"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="4" md="3">
+            <MudDatePicker Label="Date fin" @bind-Date="_filterDateEnd" DateFormat="dd/MM/yyyy"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="4" md="3">
+            <MudSelect @bind-Value="_filterModePaiement" Label="Mode de paiement" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Clearable="true">
+                <MudSelectItem Value="@("Virement")">Virement</MudSelectItem>
+                <MudSelectItem Value="@("Chèque")">Chèque</MudSelectItem>
+                <MudSelectItem Value="@("Espèces")">Espèces</MudSelectItem>
+                <MudSelectItem Value="@("Carte bancaire")">Carte bancaire</MudSelectItem>
+                <MudSelectItem Value="@("PayPal")">PayPal</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4" md="3" Class="d-flex align-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ApplyFilter"
+                       StartIcon="@Icons.Material.Filled.FilterAlt">Filtrer</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_canEdit)
+{
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenAddDialog" Class="mb-4"
+               StartIcon="@Icons.Material.Filled.Add">
+        Nouvelle recette
+    </MudButton>
+}
+
+<MudTable T="Revenue" Items="@_revenues" Dense="true" Hover="true" Striped="true"
+          GroupBy="@_groupDefinition" GroupHeaderStyle="background-color:var(--mud-palette-primary); color:white;">
+    <ColGroup>
+        <col style="width:110px;" />
+        <col />
+        <col style="width:150px;" />
+        <col style="width:110px;" />
+        <col style="width:110px;" />
+        <col style="width:110px;" />
+        <col style="width:100px;" />
+    </ColGroup>
+    <HeaderContent>
+        <MudTh>Date</MudTh>
+        <MudTh>Description</MudTh>
+        <MudTh>Client</MudTh>
+        <MudTh>Montant</MudTh>
+        <MudTh>Paiement</MudTh>
+        <MudTh>Catégorie</MudTh>
+        <MudTh>Actions</MudTh>
+    </HeaderContent>
+    <GroupHeaderTemplate>
+        <MudTh colspan="7" Style="background-color: var(--mud-palette-primary-lighten); font-weight:bold; padding:8px 16px;">
+            @{
+                var monthKey = (string)context.Key;
+                var monthItems = _revenues.Where(r => $"{r.Date.Year}-{r.Date.Month:D2}" == monthKey).ToList();
+                var monthTotal = monthItems.Sum(r => r.Montant);
+            }
+            @FormatMonthKey(monthKey) — @monthItems.Count recette(s) — @monthTotal.ToString("N2") &euro;
+        </MudTh>
+    </GroupHeaderTemplate>
+    <RowTemplate>
+        <MudTd DataLabel="Date">@context.Date.ToString("dd/MM/yyyy")</MudTd>
+        <MudTd DataLabel="Description">@context.Description</MudTd>
+        <MudTd DataLabel="Client">@context.Client</MudTd>
+        <MudTd DataLabel="Montant">
+            <MudText Color="Color.Success">@context.Montant.ToString("N2") &euro;</MudText>
+        </MudTd>
+        <MudTd DataLabel="Paiement">@context.ModePaiement</MudTd>
+        <MudTd DataLabel="Catégorie">@context.Categorie</MudTd>
+        <MudTd DataLabel="Actions">
+            @if (_canEdit)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                               OnClick="() => OpenEditDialog(context)" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="() => DeleteRevenue(context)" />
+            }
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+<MudPaper Class="pa-4 mt-2" Elevation="1">
+    <MudText Typo="Typo.h6">Total : @_total.ToString("N2") &euro;</MudText>
+</MudPaper>
+
+<MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_isEdit ? "Modifier la recette" : "Nouvelle recette")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudDatePicker Label="Date" @bind-Date="_editDate" Required="true" DateFormat="dd/MM/yyyy" />
+            <MudTextField @bind-Value="_editItem.Description" Label="Description" Required="true" />
+            <MudTextField @bind-Value="_editItem.Client" Label="Client" Required="true" />
+            <MudNumericField @bind-Value="_editItem.Montant" Label="Montant (€)" Format="N2" Required="true" />
+            <MudSelect @bind-Value="_editItem.ModePaiement" Label="Mode de paiement">
+                <MudSelectItem Value="@("Virement")">Virement</MudSelectItem>
+                <MudSelectItem Value="@("Chèque")">Chèque</MudSelectItem>
+                <MudSelectItem Value="@("Espèces")">Espèces</MudSelectItem>
+                <MudSelectItem Value="@("Carte bancaire")">Carte bancaire</MudSelectItem>
+                <MudSelectItem Value="@("PayPal")">PayPal</MudSelectItem>
+            </MudSelect>
+            <MudSelect @bind-Value="_editItem.Categorie" Label="Catégorie">
+                <MudSelectItem Value="ActivityCategory.BICVente">BIC Vente</MudSelectItem>
+                <MudSelectItem Value="ActivityCategory.BICServices">BIC Services</MudSelectItem>
+                <MudSelectItem Value="ActivityCategory.BNC">BNC (Libéral)</MudSelectItem>
+            </MudSelect>
+            <MudTextField @bind-Value="_editItem.ReferenceFacture" Label="Réf. facture (optionnel)" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _dialogVisible = false">Annuler</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveRevenue">Enregistrer</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Revenue> _revenues = new();
+    private Revenue _editItem = new();
+    private DateTime? _editDate = DateTime.Today;
+    private bool _dialogVisible;
+    private bool _isEdit;
+    private MudForm? _form;
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true };
+
+    private DateTime? _filterDateStart = new DateTime(DateTime.Today.Year, 1, 1);
+    private DateTime? _filterDateEnd = DateTime.Today;
+    private string? _filterModePaiement;
+    private decimal _total;
+    private bool _canEdit;
+
+    private readonly TableGroupDefinition<Revenue> _groupDefinition = new()
+    {
+        GroupName = "Mois",
+        Selector = r => $"{r.Date.Year}-{r.Date.Month:D2}",
+        IsInitiallyExpanded = true
+    };
+
+    private static string FormatMonthKey(string key)
+    {
+        if (DateTime.TryParse($"{key}-01", out var d))
+            return d.ToString("MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"));
+        return key;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+        _canEdit = TenantProvider.CanEdit;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        using var db = DbFactory.CreateDbContext();
+        var query = db.Revenues.Where(r => r.EntityId == TenantProvider.EntityId).AsQueryable();
+
+        if (_filterDateStart.HasValue)
+            query = query.Where(r => r.Date >= _filterDateStart.Value);
+        if (_filterDateEnd.HasValue)
+            query = query.Where(r => r.Date <= _filterDateEnd.Value);
+        if (!string.IsNullOrEmpty(_filterModePaiement))
+            query = query.Where(r => r.ModePaiement == _filterModePaiement);
+
+        _revenues = await query.OrderByDescending(r => r.Date).ToListAsync();
+        _total = _revenues.Sum(r => r.Montant);
+    }
+
+    private async Task ApplyFilter() => await LoadData();
+
+    private void OpenAddDialog()
+    {
+        _editItem = new Revenue { Date = DateTime.Today, Categorie = ActivityCategory.BNC };
+        _editDate = DateTime.Today;
+        _isEdit = false;
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(Revenue rev)
+    {
+        _editItem = new Revenue
+        {
+            Id = rev.Id, Date = rev.Date, Montant = rev.Montant,
+            Description = rev.Description, Client = rev.Client,
+            ModePaiement = rev.ModePaiement, Categorie = rev.Categorie,
+            ReferenceFacture = rev.ReferenceFacture,
+            CreatedAt = rev.CreatedAt
+        };
+        _editDate = rev.Date;
+        _isEdit = true;
+        _dialogVisible = true;
+    }
+
+    private async Task SaveRevenue()
+    {
+        if (!_canEdit) return;
+        if (_editDate.HasValue)
+            _editItem.Date = _editDate.Value;
+
+        _editItem.UpdatedAt = DateTime.UtcNow;
+
+        using var db = DbFactory.CreateDbContext();
+        if (_isEdit)
+        {
+            db.Revenues.Update(_editItem);
+        }
+        else
+        {
+            _editItem.EntityId = TenantProvider.EntityId;
+            _editItem.CreatedAt = DateTime.UtcNow;
+            db.Revenues.Add(_editItem);
+        }
+        await db.SaveChangesAsync();
+        _dialogVisible = false;
+        Snackbar.Add(_isEdit ? "Recette modifiée" : "Recette ajoutée", Severity.Success);
+        await LoadData();
+    }
+
+    private async Task DeleteRevenue(Revenue rev)
+    {
+        if (!_canEdit) return;
+        using var db = DbFactory.CreateDbContext();
+        db.Revenues.Remove(rev);
+        await db.SaveChangesAsync();
+        Snackbar.Add("Recette supprimée", Severity.Info);
+        await LoadData();
+    }
+}

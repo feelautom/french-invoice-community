@@ -1,0 +1,177 @@
+@page "/data-export"
+@inject ExportService ExportService
+@inject ImportService ImportService
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ITenantProvider TenantProvider
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Export / Import — FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Export / Import des donnees</MudText>
+
+@* ── EXPORT ── *@
+<MudPaper Class="pa-6 mb-4" Elevation="2">
+    <MudText Typo="Typo.h5" Class="mb-3">Exporter mes donnees</MudText>
+    <MudText Typo="Typo.body1" Class="mb-4">
+        Telechargez une archive ZIP contenant toutes vos donnees : recettes, depenses, clients, factures, devis,
+        declarations, transactions bancaires, justificatifs et PDFs.
+    </MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Export"
+               StartIcon="@Icons.Material.Filled.Download" Disabled="_exporting" Size="Size.Large">
+        @if (_exporting)
+        {
+            <MudProgressCircular Size="Size.Small" Color="Color.Inherit" Indeterminate="true" Class="mr-2" />
+            <span>Export en cours...</span>
+        }
+        else
+        {
+            <span>Exporter (ZIP)</span>
+        }
+    </MudButton>
+</MudPaper>
+
+@* ── IMPORT ── *@
+<MudPaper Class="pa-6" Elevation="2">
+    <MudText Typo="Typo.h5" Class="mb-3">Importer des donnees</MudText>
+    <MudAlert Severity="Severity.Warning" Class="mb-4">
+        L'import n'est possible que sur une entite vide (aucune recette, depense ou facture existante).
+        Les donnees importees remplaceront les parametres actuels.
+    </MudAlert>
+
+    <MudFileUpload T="IBrowserFile" FilesChanged="OnImportFileSelected" Accept=".zip">
+        <ActivatorContent>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                       StartIcon="@Icons.Material.Filled.Upload" Size="Size.Large">
+                Selectionner un fichier ZIP
+            </MudButton>
+        </ActivatorContent>
+    </MudFileUpload>
+
+    @if (_importValidation != null)
+    {
+        <MudPaper Class="pa-4 mt-4" Elevation="1">
+            @if (_importValidation.IsValid)
+            {
+                <MudAlert Severity="Severity.Success" Class="mb-3">Archive valide</MudAlert>
+                <MudGrid>
+                    <MudItem xs="6" sm="4">
+                        <MudText Typo="Typo.body2">Entite source</MudText>
+                        <MudText Typo="Typo.h6">@_importValidation.Metadata!.EntityName</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="4">
+                        <MudText Typo="Typo.body2">Date d'export</MudText>
+                        <MudText Typo="Typo.h6">@_importValidation.Metadata.ExportDate.ToString("dd/MM/yyyy HH:mm")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="4">
+                        <MudText Typo="Typo.body2">Donnees</MudText>
+                        <MudText Typo="Typo.body1">
+                            @_importValidation.Metadata.RevenueCount recettes,
+                            @_importValidation.Metadata.ExpenseCount depenses,
+                            @_importValidation.Metadata.InvoiceCount factures,
+                            @_importValidation.Metadata.QuoteCount devis,
+                            @_importValidation.Metadata.ClientCount clients
+                        </MudText>
+                    </MudItem>
+                </MudGrid>
+
+                <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="ExecuteImport"
+                           StartIcon="@Icons.Material.Filled.CloudDownload" Class="mt-4" Disabled="_importing">
+                    @if (_importing)
+                    {
+                        <MudProgressCircular Size="Size.Small" Color="Color.Inherit" Indeterminate="true" Class="mr-2" />
+                        <span>Import en cours...</span>
+                    }
+                    else
+                    {
+                        <span>Importer ces donnees</span>
+                    }
+                </MudButton>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Error">@_importValidation.Error</MudAlert>
+            }
+        </MudPaper>
+    }
+</MudPaper>
+
+@code {
+    private bool _exporting;
+    private bool _importing;
+    private ImportValidation? _importValidation;
+    private byte[]? _importZipBytes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+    }
+
+    private async Task Export()
+    {
+        _exporting = true;
+        StateHasChanged();
+
+        try
+        {
+            var bytes = await ExportService.ExportEntityAsync(TenantProvider.EntityId);
+            var base64 = Convert.ToBase64String(bytes);
+            var fileName = $"FrenchInvoice_Export_{DateTime.Now:yyyyMMdd_HHmmss}.zip";
+            await JS.InvokeVoidAsync("downloadFile", fileName, "application/zip", base64);
+            Snackbar.Add("Export termine", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erreur export : {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _exporting = false;
+        }
+    }
+
+    private async Task OnImportFileSelected(IBrowserFile file)
+    {
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            _importZipBytes = ms.ToArray();
+
+            ms.Seek(0, SeekOrigin.Begin);
+            _importValidation = await ImportService.ValidateAsync(ms);
+        }
+        catch (Exception ex)
+        {
+            _importValidation = new ImportValidation { IsValid = false, Error = ex.Message };
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task ExecuteImport()
+    {
+        if (_importZipBytes == null) return;
+
+        _importing = true;
+        StateHasChanged();
+
+        try
+        {
+            using var ms = new MemoryStream(_importZipBytes);
+            await ImportService.ImportAsync(TenantProvider.EntityId, ms);
+            Snackbar.Add("Import termine avec succes", Severity.Success);
+            _importValidation = null;
+            _importZipBytes = null;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erreur import : {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _importing = false;
+        }
+    }
+}

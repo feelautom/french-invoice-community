@@ -1,0 +1,303 @@
+@page "/settings"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ISnackbar Snackbar
+@inject ITenantProvider TenantProvider
+@inject ISecretProvider SecretProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Paramètres — FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Paramètres</MudText>
+
+@if (_settings != null)
+{
+    <MudForm>
+        @* ── Structure & Fiscalité ── *@
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Structure &amp; Fiscalité</MudText>
+
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_settings.TypeActivite" Label="Type d'activité">
+                        <MudSelectItem Value="ActivityCategory.BICVente">BIC — Vente de marchandises (12.3 %)</MudSelectItem>
+                        <MudSelectItem Value="ActivityCategory.BICServices">BIC — Prestations de services (21.2 %)</MudSelectItem>
+                        <MudSelectItem Value="ActivityCategory.BNC">BNC — Libéral (21.1 %)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_settings.PeriodiciteDeclaration" Label="Périodicité de déclaration">
+                        <MudSelectItem Value="DeclarationPeriodicity.Mensuelle">Mensuelle</MudSelectItem>
+                        <MudSelectItem Value="DeclarationPeriodicity.Trimestrielle">Trimestrielle</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="_dateDebut" Label="Date de début d'activité" DateFormat="dd/MM/yyyy" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_settings.PlafondCA" Label="Plafond CA (€)" Format="N0" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudSwitch @bind-Value="_settings.FranchiseTVA" Label="Franchise en base de TVA" Color="Color.Primary" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_settings.TauxTVA" Label="Taux TVA (%)" Format="N1"
+                                     Disabled="_settings.FranchiseTVA" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField Value="@TauxURSSAF" Label="Taux URSSAF (%)" ReadOnly="true" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudSwitch @bind-Value="_settings.VersementLiberatoire" Label="Versement libératoire" Color="Color.Primary" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_settings.TauxLiberatoire" Label="Taux libératoire (%)" Format="N1"
+                                     Disabled="!_settings.VersementLiberatoire" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_settings.FraisVariables" Label="Frais variables (%)" Format="N1" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudSwitch @bind-Value="_settings.BeneficieACRE" Label="Bénéficie de l'ACRE" Color="Color.Primary" />
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @* ── Facturation & Mentions légales ── *@
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Facturation &amp; Mentions légales</MudText>
+
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_settings.Nom" Label="Nom de l'entreprise" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_settings.NumeroSiret" Label="N° SIRET" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_settings.TvaIntracommunautaire" Label="TVA intracommunautaire" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_settings.Telephone" Label="Téléphone" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_settings.Email" Label="Email entreprise" InputType="InputType.Email"
+                                  HelperText="Utilisé dans le XML Factur-X" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_settings.AdresseSiege" Label="Adresse du siège" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_settings.PrefixeFactures" Label="Préfixe factures" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_settings.ProchainNumeroFacture" Label="Prochain n° facture" Min="1" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_settings.PrefixeDevis" Label="Préfixe devis" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_settings.ProchainNumeroDevis" Label="Prochain n° devis" Min="1" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_settings.MentionsLegales" Label="Mentions légales" Lines="3" />
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @* ── Coordonnées bancaires ── *@
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Coordonnées bancaires</MudText>
+            <MudText Typo="Typo.body2" Class="mb-3" Color="Color.Secondary">
+                Utilisées dans les factures PDF (Factur-X) pour le paiement par virement SEPA.
+            </MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="8">
+                    <MudTextField @bind-Value="_iban" Label="IBAN" Placeholder="FR76 1234 5678 9012 3456 7890 123" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_bic" Label="BIC" Placeholder="BNPAFRPP" />
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @* ── Plateformes de paiement ── *@
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Plateformes de paiement</MudText>
+            <MudText Typo="Typo.body2" Class="mb-3" Color="Color.Secondary">
+                Clés API secrètes pour la synchronisation des paiements. Laissez vide si vous n'utilisez pas la plateforme.
+            </MudText>
+
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_stancerKey" Label="Clé secrète Stancer"
+                                  InputType="@(_showStancerKey ? InputType.Text : InputType.Password)"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@(_showStancerKey ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                                  OnAdornmentClick="() => _showStancerKey = !_showStancerKey" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_stripeKey" Label="Clé secrète Stripe"
+                                  InputType="@(_showStripeKey ? InputType.Text : InputType.Password)"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@(_showStripeKey ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                                  OnAdornmentClick="() => _showStripeKey = !_showStripeKey" />
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @* ── Charges fixes mensuelles ── *@
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Charges fixes mensuelles</MudText>
+
+            @foreach (var charge in _charges)
+            {
+                <MudGrid Class="mb-2">
+                    <MudItem xs="5">
+                        <MudTextField @bind-Value="charge.Nom" Label="Nom" />
+                    </MudItem>
+                    <MudItem xs="3">
+                        <MudNumericField @bind-Value="charge.Montant" Label="Montant (€)" Format="N2" />
+                    </MudItem>
+                    <MudItem xs="2">
+                        <MudSwitch @bind-Value="charge.Active" Label="Active" Color="Color.Primary" />
+                    </MudItem>
+                    <MudItem xs="2" Class="d-flex align-center">
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                       OnClick="() => RemoveCharge(charge)" />
+                    </MudItem>
+                </MudGrid>
+            }
+
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="AddCharge" Class="mt-2"
+                       StartIcon="@Icons.Material.Filled.Add">
+                Ajouter une charge
+            </MudButton>
+
+            <MudText Typo="Typo.subtitle1" Class="mt-3">
+                <b>Total mensuel :</b> @TotalCharges.ToString("N2") €
+            </MudText>
+        </MudPaper>
+
+        @* ── Bouton Enregistrer ── *@
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Class="mt-2"
+                   StartIcon="@Icons.Material.Filled.Save" Size="Size.Large">
+            Enregistrer
+        </MudButton>
+    </MudForm>
+}
+
+@code {
+    private Entity? _settings;
+    private DateTime? _dateDebut;
+    private List<FixedCharge> _charges = new();
+    private List<FixedCharge> _chargesToDelete = new();
+    private bool _showStancerKey;
+    private bool _showStripeKey;
+    private string? _stancerKey;
+    private string? _stripeKey;
+    private string? _iban;
+    private string? _bic;
+
+    private string TauxURSSAF => _settings?.TypeActivite switch
+    {
+        ActivityCategory.BICVente => "12.3",
+        ActivityCategory.BICServices => "21.2",
+        ActivityCategory.BNC => "21.1",
+        _ => "—"
+    };
+
+    private decimal TotalCharges => _charges.Where(c => c.Active).Sum(c => c.Montant);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+        if (TenantProvider.Role == UserRole.User)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+        using var db = DbFactory.CreateDbContext();
+        _settings = await db.Entities.FirstOrDefaultAsync(e => e.Id == TenantProvider.EntityId);
+        _dateDebut = _settings?.DateDebutActivite;
+        _charges = await db.FixedCharges.Where(c => c.EntityId == TenantProvider.EntityId).ToListAsync();
+
+        // Charger les clés API depuis Infisical (identifié par SIRET)
+        if (!string.IsNullOrEmpty(_settings?.NumeroSiret))
+        {
+            _stancerKey = await SecretProvider.GetSecretAsync(_settings.NumeroSiret, "STANCER_SECRET_KEY");
+            _stripeKey = await SecretProvider.GetSecretAsync(_settings.NumeroSiret, "STRIPE_SECRET_KEY");
+            _iban = await SecretProvider.GetSecretAsync(_settings.NumeroSiret, "IBAN");
+            _bic = await SecretProvider.GetSecretAsync(_settings.NumeroSiret, "BIC");
+        }
+    }
+
+    private void AddCharge()
+    {
+        _charges.Add(new FixedCharge { EntityId = TenantProvider.EntityId });
+    }
+
+    private void RemoveCharge(FixedCharge charge)
+    {
+        _charges.Remove(charge);
+        if (charge.Id != 0)
+            _chargesToDelete.Add(charge);
+    }
+
+    private async Task Save()
+    {
+        if (_settings == null) return;
+        _settings.DateDebutActivite = _dateDebut;
+
+        using var db = DbFactory.CreateDbContext();
+
+        // Marquer comme configuré si première sauvegarde
+        if (!_settings.Configured)
+            _settings.Configured = true;
+
+        // Settings
+        db.Entities.Update(_settings);
+
+        // Delete removed charges
+        foreach (var c in _chargesToDelete)
+        {
+            db.FixedCharges.Attach(c);
+            db.FixedCharges.Remove(c);
+        }
+        _chargesToDelete.Clear();
+
+        // Upsert charges
+        foreach (var c in _charges)
+        {
+            if (c.Id == 0)
+                db.FixedCharges.Add(c);
+            else
+                db.FixedCharges.Update(c);
+        }
+
+        await db.SaveChangesAsync();
+
+        // Community edition : pas de gestion des secrets externes
+
+        Snackbar.Add("Paramètres enregistrés", Severity.Success);
+    }
+}

@@ -1,0 +1,372 @@
+@page "/declarations"
+@inject DeclarationService DeclarationSvc
+@inject AccountingService Accounting
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ISnackbar Snackbar
+@inject ITenantProvider TenantProvider
+@inject IWebHostEnvironment Env
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageTitle>Déclarations URSSAF — FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Déclarations URSSAF</MudText>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12" sm="3">
+        <MudNumericField @bind-Value="_year" Label="Année" Min="2020" Max="2030" />
+    </MudItem>
+    <MudItem xs="12" sm="9" Class="d-flex align-end gap-2">
+        @if (_canEdit)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GenerateDeclarations"
+                       StartIcon="@Icons.Material.Filled.AutoAwesome">
+                Générer les échéances
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Recalculer"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       Disabled="@(!_declarations.Any(d => d.Statut == DeclarationStatut.AFaire))">
+                Recalculer
+            </MudButton>
+        }
+    </MudItem>
+</MudGrid>
+
+<MudDataGrid T="Declaration" Items="@_declarations" Dense="true" Hover="true" Striped="true">
+    <Columns>
+        <PropertyColumn Property="x => x.Periode" Title="Période" />
+        <PropertyColumn Property="x => x.DateLimite" Title="Date limite" Format="dd/MM/yyyy" />
+        <PropertyColumn Property="x => x.MontantCA" Title="CA" Format="N2" />
+        <PropertyColumn Property="x => x.TauxApplique" Title="Taux (%)" Format="N1" />
+        <PropertyColumn Property="x => x.MontantCotisations" Title="Cotisations" Format="N2" />
+        <TemplateColumn Title="Statut">
+            <CellTemplate>
+                <MudChip T="string" Color="@GetStatusColor(context.Item)" Size="Size.Small">
+                    @GetDisplayLabel(context.Item)
+                </MudChip>
+                @if (context.Item.DateDeclaration.HasValue)
+                {
+                    <MudText Typo="Typo.caption" Class="ml-1">@context.Item.DateDeclaration.Value.ToString("dd/MM/yyyy")</MudText>
+                }
+            </CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn Title="Justificatif" Sortable="false" Filterable="false">
+            <CellTemplate>
+                @if (!string.IsNullOrEmpty(context.Item.JustificatifFileName))
+                {
+                    <MudButtonGroup OverrideStyles="false">
+                        <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small"
+                                       Color="Color.Primary" Title="Télécharger"
+                                       OnClick="() => DownloadJustificatif(context.Item)" />
+                        @if (_canEdit)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                           Color="Color.Error" Title="Supprimer"
+                                           OnClick="() => DeleteJustificatif(context.Item)" />
+                        }
+                    </MudButtonGroup>
+                }
+                else if (_canEdit && context.Item.Statut != DeclarationStatut.AFaire)
+                {
+                    <MudFileUpload T="IBrowserFile" Accept=".pdf,.jpg,.jpeg,.png"
+                                   FilesChanged="(f) => UploadJustificatif(context.Item, f)"
+                                   MaximumFileCount="1">
+                        <ActivatorContent>
+                            <MudIconButton Icon="@Icons.Material.Filled.Upload" Size="Size.Small"
+                                           Color="Color.Default" Title="Uploader le justificatif" />
+                        </ActivatorContent>
+                    </MudFileUpload>
+                }
+            </CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn Title="Actions" Sortable="false" Filterable="false">
+            <CellTemplate>
+                @if (_canEdit && context.Item.Statut == DeclarationStatut.AFaire && context.Item.PeriodeFin < DateTime.Today)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                               OnClick="() => OpenDeclarerDialog(context.Item)">
+                        Déclarer
+                    </MudButton>
+                }
+                @if (_canEdit && context.Item.Statut == DeclarationStatut.Declaree)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success"
+                               OnClick="() => OpenPayeeDialog(context.Item)">
+                        Payée
+                    </MudButton>
+                }
+            </CellTemplate>
+        </TemplateColumn>
+    </Columns>
+</MudDataGrid>
+
+@if (_declarations.Any())
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="6" sm="3">
+                <MudText Typo="Typo.subtitle2">Total CA @_year</MudText>
+                <MudText Typo="Typo.h6">@_declarations.Sum(d => d.MontantCA).ToString("N2") €</MudText>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudText Typo="Typo.subtitle2">Total Cotisations @_year</MudText>
+                <MudText Typo="Typo.h6">@_declarations.Sum(d => d.MontantCotisations).ToString("N2") €</MudText>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudText Typo="Typo.subtitle2">Déclarations restantes</MudText>
+                <MudText Typo="Typo.h6">@_declarations.Count(d => d.Statut == DeclarationStatut.AFaire) / @_declarations.Count</MudText>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+}
+
+@* Dialog Déclarer *@
+<MudDialog @bind-Visible="_declarerDialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Déclarer la période @_selectedDeclaration?.Periode</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudDatePicker Label="Date de déclaration" @bind-Date="_dialogDate" DateFormat="dd/MM/yyyy" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _declarerDialogVisible = false">Annuler</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmDeclarer">Valider</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* Dialog Payée *@
+<MudDialog @bind-Visible="_payeeDialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Marquer payée — @_selectedDeclaration?.Periode</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudDatePicker Label="Date de paiement" @bind-Date="_dialogDate" DateFormat="dd/MM/yyyy" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _payeeDialogVisible = false">Annuler</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ConfirmPayee">Valider</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Declaration> _declarations = new();
+    private int _year = DateTime.Today.Year;
+    private bool _canEdit;
+
+    private bool _declarerDialogVisible;
+    private bool _payeeDialogVisible;
+    private Declaration? _selectedDeclaration;
+    private DateTime? _dialogDate = DateTime.Today;
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+        _canEdit = TenantProvider.CanEdit;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _declarations = await DeclarationSvc.GetByYearAsync(_year);
+    }
+
+    private async Task GenerateDeclarations()
+    {
+        if (!_canEdit) return;
+        await DeclarationSvc.GenerateDeclarationsAsync(_year);
+        Snackbar.Add($"Échéances {_year} générées / mises à jour", Severity.Success);
+        await LoadData();
+    }
+
+    private async Task Recalculer()
+    {
+        if (!_canEdit) return;
+        await DeclarationSvc.RecalculerAsync(_year);
+        Snackbar.Add($"Montants recalculés pour les déclarations à faire de {_year}", Severity.Success);
+        await LoadData();
+    }
+
+    private void OpenDeclarerDialog(Declaration decl)
+    {
+        _selectedDeclaration = decl;
+        _dialogDate = DateTime.Today;
+        _declarerDialogVisible = true;
+    }
+
+    private async Task ConfirmDeclarer()
+    {
+        if (!_canEdit) return;
+        if (_selectedDeclaration == null) return;
+        _selectedDeclaration.Statut = DeclarationStatut.Declaree;
+        _selectedDeclaration.DateDeclaration = _dialogDate ?? DateTime.Today;
+        await DeclarationSvc.SaveAsync(_selectedDeclaration);
+        _declarerDialogVisible = false;
+        Snackbar.Add($"Déclaration {_selectedDeclaration.Periode} marquée comme déclarée", Severity.Success);
+        await LoadData();
+    }
+
+    private void OpenPayeeDialog(Declaration decl)
+    {
+        _selectedDeclaration = decl;
+        _dialogDate = DateTime.Today;
+        _payeeDialogVisible = true;
+    }
+
+    private async Task ConfirmPayee()
+    {
+        if (!_canEdit) return;
+        if (_selectedDeclaration == null) return;
+        _selectedDeclaration.Statut = DeclarationStatut.Payee;
+        _selectedDeclaration.DatePaiement = _dialogDate ?? DateTime.Today;
+        await DeclarationSvc.SaveAsync(_selectedDeclaration);
+        _payeeDialogVisible = false;
+        Snackbar.Add($"Déclaration {_selectedDeclaration.Periode} marquée comme payée", Severity.Success);
+        await LoadData();
+    }
+
+    private string GetEntityDir()
+    {
+        return Path.Combine(Env.ContentRootPath, "Data", "declarations", TenantProvider.EntityId.ToString());
+    }
+
+    private async Task UploadJustificatif(Declaration declaration, IBrowserFile file)
+    {
+        if (!_canEdit) return;
+
+        if (file.Size > 10 * 1024 * 1024)
+        {
+            Snackbar.Add("Fichier trop volumineux (max 10 Mo)", Severity.Error);
+            return;
+        }
+
+        var ext = Path.GetExtension(file.Name);
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".pdf", ".jpg", ".jpeg", ".png" };
+        if (!allowed.Contains(ext))
+        {
+            Snackbar.Add("Type non autorisé (PDF, JPG, PNG)", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            var entityId = TenantProvider.EntityId;
+            using var db = DbFactory.CreateDbContext();
+            var decl = await db.Declarations
+                .FirstOrDefaultAsync(d => d.Id == declaration.Id && d.EntityId == entityId);
+            if (decl == null) return;
+
+            var dir = GetEntityDir();
+            Directory.CreateDirectory(dir);
+
+            if (!string.IsNullOrEmpty(decl.JustificatifFileName))
+            {
+                var oldPath = Path.Combine(dir, decl.JustificatifFileName);
+                if (File.Exists(oldPath)) File.Delete(oldPath);
+            }
+
+            var fileName = $"{decl.Id}{ext}";
+            var filePath = Path.Combine(dir, fileName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await file.OpenReadStream(10 * 1024 * 1024).CopyToAsync(stream);
+            }
+
+            decl.JustificatifFileName = fileName;
+            db.Declarations.Update(decl);
+            await db.SaveChangesAsync();
+
+            Snackbar.Add("Justificatif uploadé", Severity.Success);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erreur upload : {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DownloadJustificatif(Declaration declaration)
+    {
+        if (string.IsNullOrEmpty(declaration.JustificatifFileName)) return;
+
+        try
+        {
+            var entityId = TenantProvider.EntityId;
+            using var db = DbFactory.CreateDbContext();
+            var decl = await db.Declarations
+                .FirstOrDefaultAsync(d => d.Id == declaration.Id && d.EntityId == entityId);
+            if (decl == null || string.IsNullOrEmpty(decl.JustificatifFileName)) return;
+
+            var filePath = Path.Combine(GetEntityDir(), decl.JustificatifFileName);
+            if (!File.Exists(filePath)) { Snackbar.Add("Fichier introuvable", Severity.Error); return; }
+
+            var bytes = await File.ReadAllBytesAsync(filePath);
+            var contentType = Path.GetExtension(decl.JustificatifFileName).ToLower() switch
+            {
+                ".pdf" => "application/pdf",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                _ => "application/octet-stream"
+            };
+
+            var base64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("eval",
+                $"(function(){{var a=document.createElement('a');a.href='data:{contentType};base64,{base64}';a.download='{decl.JustificatifFileName}';document.body.appendChild(a);a.click();a.remove();}})()");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erreur téléchargement : {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteJustificatif(Declaration declaration)
+    {
+        if (!_canEdit) return;
+
+        try
+        {
+            var entityId = TenantProvider.EntityId;
+            using var db = DbFactory.CreateDbContext();
+            var decl = await db.Declarations
+                .FirstOrDefaultAsync(d => d.Id == declaration.Id && d.EntityId == entityId);
+            if (decl == null || string.IsNullOrEmpty(decl.JustificatifFileName)) return;
+
+            var filePath = Path.Combine(GetEntityDir(), decl.JustificatifFileName);
+            if (File.Exists(filePath)) File.Delete(filePath);
+
+            decl.JustificatifFileName = null;
+            db.Declarations.Update(decl);
+            await db.SaveChangesAsync();
+
+            Snackbar.Add("Justificatif supprimé", Severity.Success);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erreur suppression : {ex.Message}", Severity.Error);
+        }
+    }
+
+    private Color GetStatusColor(Declaration d)
+    {
+        if (d.Statut == DeclarationStatut.Payee) return Color.Success;
+        if (d.Statut == DeclarationStatut.Declaree) return Color.Info;
+        if (d.DateLimite < DateTime.Today) return Color.Error;
+        if ((d.DateLimite - DateTime.Today).Days <= 15) return Color.Warning;
+        return Color.Default;
+    }
+
+    private string GetDisplayLabel(Declaration d)
+    {
+        if (d.Statut == DeclarationStatut.AFaire && d.DateLimite < DateTime.Today)
+            return "En retard";
+        return d.Statut switch
+        {
+            DeclarationStatut.AFaire => "À faire",
+            DeclarationStatut.Declaree => "Déclarée",
+            DeclarationStatut.Payee => "Payée",
+            _ => d.Statut.ToString()
+        };
+    }
+}

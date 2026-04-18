@@ -1,0 +1,375 @@
+@page "/devis"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject QuoteService QuoteService
+@inject ISnackbar Snackbar
+@inject ITenantProvider TenantProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Devis — FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Devis</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Label="Date début" @bind-Date="_filterDateStart" DateFormat="dd/MM/yyyy"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Label="Date fin" @bind-Date="_filterDateEnd" DateFormat="dd/MM/yyyy"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="QuoteStatus?" Label="Statut" @bind-Value="_filterStatut" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Clearable="true">
+                <MudSelectItem T="QuoteStatus?" Value="QuoteStatus.Brouillon">Brouillon</MudSelectItem>
+                <MudSelectItem T="QuoteStatus?" Value="QuoteStatus.Envoye">Envoyé</MudSelectItem>
+                <MudSelectItem T="QuoteStatus?" Value="QuoteStatus.Accepte">Accepté</MudSelectItem>
+                <MudSelectItem T="QuoteStatus?" Value="QuoteStatus.Refuse">Refusé</MudSelectItem>
+                <MudSelectItem T="QuoteStatus?" Value="QuoteStatus.Expire">Expiré</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3" Class="d-flex align-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData"
+                       StartIcon="@Icons.Material.Filled.FilterAlt">Filtrer</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_canEdit)
+{
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenAddDialog" Class="mb-4"
+               StartIcon="@Icons.Material.Filled.Add">
+        Nouveau devis
+    </MudButton>
+}
+
+<MudTable T="Quote" Items="@_quotes" Dense="true" Hover="true" Striped="true">
+    <ColGroup>
+        <col style="width:140px;" />
+        <col style="width:110px;" />
+        <col />
+        <col style="width:120px;" />
+        <col style="width:110px;" />
+        <col style="width:100px;" />
+        <col style="width:220px;" />
+    </ColGroup>
+    <HeaderContent>
+        <MudTh>Numéro</MudTh>
+        <MudTh>Date</MudTh>
+        <MudTh>Client</MudTh>
+        <MudTh>Montant TTC</MudTh>
+        <MudTh>Validité</MudTh>
+        <MudTh>Statut</MudTh>
+        <MudTh>Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Numéro">@context.Numero</MudTd>
+        <MudTd DataLabel="Date">@context.DateEmission.ToString("dd/MM/yyyy")</MudTd>
+        <MudTd DataLabel="Client">@context.Client?.Nom</MudTd>
+        <MudTd DataLabel="Montant TTC">@context.MontantTTC.ToString("N2") &euro;</MudTd>
+        <MudTd DataLabel="Validité">@context.DateValidite.ToString("dd/MM/yyyy")</MudTd>
+        <MudTd DataLabel="Statut">
+            <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Statut)">
+                @GetStatusLabel(context.Statut)
+            </MudChip>
+        </MudTd>
+        <MudTd DataLabel="Actions">
+            @if (_canEdit && context.Statut == QuoteStatus.Brouillon)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                               OnClick="() => OpenEditDialog(context)" Title="Modifier" />
+                <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Primary"
+                               OnClick="() => ChangerStatut(context, QuoteStatus.Envoye)" Title="Envoyer" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="() => Delete(context)" Title="Supprimer" />
+            }
+            @if (_canEdit && context.Statut == QuoteStatus.Envoye)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success"
+                               OnClick="() => ChangerStatut(context, QuoteStatus.Accepte)" Title="Accepter" />
+                <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error"
+                               OnClick="() => ChangerStatut(context, QuoteStatus.Refuse)" Title="Refuser" />
+            }
+            @if (_canEdit && context.Statut == QuoteStatus.Accepte && !context.InvoiceId.HasValue)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Receipt" Size="Size.Small" Color="Color.Primary"
+                               OnClick="() => ConvertirEnFacture(context)" Title="Convertir en facture" />
+            }
+            @if (!string.IsNullOrEmpty(context.CheminPdf))
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" Color="Color.Info"
+                               OnClick="@(() => DownloadQuotePdf(context))"
+                               Title="Télécharger PDF" />
+            }
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@* Dialog création/édition *@
+<MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_isEdit ? "Modifier le devis" : "Nouveau devis")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudAutocomplete T="Client" Label="Client" @bind-Value="_selectedClient" SearchFunc="SearchClients"
+                             ToStringFunc="@(c => c?.Nom ?? "")" Required="true" />
+            <MudGrid>
+                <MudItem xs="6">
+                    <MudDatePicker Label="Date d'émission" @bind-Date="_editDateEmission" DateFormat="dd/MM/yyyy" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudDatePicker Label="Date de validité" @bind-Date="_editDateValidite" DateFormat="dd/MM/yyyy" />
+                </MudItem>
+            </MudGrid>
+            <MudTextField @bind-Value="_editNotes" Label="Notes (optionnel)" Lines="2" />
+
+            <MudText Typo="Typo.h6" Class="mt-4 mb-2">Lignes</MudText>
+            @for (var i = 0; i < _editLignes.Count; i++)
+            {
+                var idx = i;
+                <MudPaper Class="pa-3 mb-2" Elevation="0" Outlined="true">
+                    <MudGrid>
+                        <MudItem xs="12" sm="5">
+                            <MudTextField @bind-Value="_editLignes[idx].Description" Label="Description" Required="true" />
+                        </MudItem>
+                        <MudItem xs="6" sm="2">
+                            <MudNumericField @bind-Value="_editLignes[idx].Quantite" Label="Qté" Format="G" Min="0.01m" />
+                        </MudItem>
+                        <MudItem xs="6" sm="2">
+                            <MudNumericField @bind-Value="_editLignes[idx].PrixUnitaire" Label="PU HT (€)" Format="N2" />
+                        </MudItem>
+                        <MudItem xs="6" sm="2">
+                            <MudNumericField @bind-Value="_editLignes[idx].TauxTVA" Label="TVA %" Format="N1"
+                                             Disabled="_franchiseTVA" />
+                        </MudItem>
+                        <MudItem xs="6" sm="1" Class="d-flex align-end">
+                            <MudIconButton Icon="@Icons.Material.Filled.RemoveCircle" Color="Color.Error"
+                                           OnClick="() => _editLignes.RemoveAt(idx)" Disabled="_editLignes.Count <= 1" />
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="AddLigne"
+                       StartIcon="@Icons.Material.Filled.Add" Class="mb-2">
+                Ajouter une ligne
+            </MudButton>
+
+            <MudPaper Class="pa-3 mt-2" Elevation="1">
+                <MudText>Total HT : <strong>@CalculerTotalHT().ToString("N2") €</strong></MudText>
+                <MudText>TVA : <strong>@CalculerTotalTVA().ToString("N2") €</strong></MudText>
+                <MudText Typo="Typo.h6">Total TTC : @CalculerTotalTTC().ToString("N2") €</MudText>
+            </MudPaper>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _dialogVisible = false">Annuler</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveQuote">Enregistrer</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Quote> _quotes = new();
+    private List<Client> _allClients = new();
+    private DateTime? _filterDateStart = new DateTime(DateTime.Today.Year, 1, 1);
+    private DateTime? _filterDateEnd;
+    private QuoteStatus? _filterStatut;
+
+    private bool _dialogVisible;
+    private bool _isEdit;
+    private int _editId;
+    private MudForm? _form;
+    private Client? _selectedClient;
+    private DateTime? _editDateEmission = DateTime.Today;
+    private DateTime? _editDateValidite = DateTime.Today.AddDays(30);
+    private string? _editNotes;
+    private List<QuoteLine> _editLignes = new() { new QuoteLine { Quantite = 1 } };
+    private bool _franchiseTVA;
+    private bool _canEdit;
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+        _canEdit = TenantProvider.CanEdit;
+        using var db = DbFactory.CreateDbContext();
+        var settings = await db.Entities.FirstAsync(e => e.Id == TenantProvider.EntityId);
+        _franchiseTVA = settings.FranchiseTVA;
+        _allClients = await db.Clients.Where(c => c.EntityId == TenantProvider.EntityId).OrderBy(c => c.Nom).ToListAsync();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _quotes = await QuoteService.GetAllAsync(_filterStatut, null, _filterDateStart, _filterDateEnd);
+    }
+
+    private static Color GetStatusColor(QuoteStatus statut) => statut switch
+    {
+        QuoteStatus.Brouillon => Color.Default,
+        QuoteStatus.Envoye => Color.Info,
+        QuoteStatus.Accepte => Color.Success,
+        QuoteStatus.Refuse => Color.Error,
+        QuoteStatus.Expire => Color.Warning,
+        _ => Color.Default
+    };
+
+    private static string GetStatusLabel(QuoteStatus statut) => statut switch
+    {
+        QuoteStatus.Brouillon => "Brouillon",
+        QuoteStatus.Envoye => "Envoyé",
+        QuoteStatus.Accepte => "Accepté",
+        QuoteStatus.Refuse => "Refusé",
+        QuoteStatus.Expire => "Expiré",
+        _ => statut.ToString()
+    };
+
+    private Task<IEnumerable<Client>> SearchClients(string? value, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(value))
+            return Task.FromResult(_allClients.AsEnumerable());
+        return Task.FromResult(_allClients.Where(c =>
+            c.Nom.Contains(value, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private void OpenAddDialog()
+    {
+        _isEdit = false;
+        _editId = 0;
+        _selectedClient = null;
+        _editDateEmission = DateTime.Today;
+        _editDateValidite = DateTime.Today.AddDays(30);
+        _editNotes = null;
+        _editLignes = new List<QuoteLine> { new() { Quantite = 1, TauxTVA = _franchiseTVA ? 0 : 20 } };
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(Quote q)
+    {
+        _isEdit = true;
+        _editId = q.Id;
+        _selectedClient = q.Client;
+        _editDateEmission = q.DateEmission;
+        _editDateValidite = q.DateValidite;
+        _editNotes = q.Notes;
+        _editLignes = q.Lignes.Select(l => new QuoteLine
+        {
+            Description = l.Description,
+            Quantite = l.Quantite,
+            PrixUnitaire = l.PrixUnitaire,
+            TauxTVA = l.TauxTVA
+        }).ToList();
+        if (_editLignes.Count == 0)
+            _editLignes.Add(new QuoteLine { Quantite = 1, TauxTVA = _franchiseTVA ? 0 : 20 });
+        _dialogVisible = true;
+    }
+
+    private void AddLigne()
+    {
+        _editLignes.Add(new QuoteLine { Quantite = 1, TauxTVA = _franchiseTVA ? 0 : 20 });
+    }
+
+    private decimal CalculerTotalHT() => _editLignes.Sum(l => Math.Round(l.Quantite * l.PrixUnitaire, 2));
+    private decimal CalculerTotalTVA() => _editLignes.Sum(l => Math.Round(l.Quantite * l.PrixUnitaire * l.TauxTVA / 100m, 2));
+    private decimal CalculerTotalTTC() => CalculerTotalHT() + CalculerTotalTVA();
+
+    private async Task SaveQuote()
+    {
+        if (!_canEdit) return;
+        if (_selectedClient == null)
+        {
+            Snackbar.Add("Veuillez sélectionner un client.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            var quote = new Quote
+            {
+                Id = _editId,
+                ClientId = _selectedClient.Id,
+                DateEmission = _editDateEmission ?? DateTime.Today,
+                DateValidite = _editDateValidite ?? DateTime.Today.AddDays(30),
+                Notes = _editNotes,
+                Lignes = _editLignes.Select(l => new QuoteLine
+                {
+                    Description = l.Description,
+                    Quantite = l.Quantite,
+                    PrixUnitaire = l.PrixUnitaire,
+                    TauxTVA = l.TauxTVA
+                }).ToList()
+            };
+
+            if (_isEdit)
+                await QuoteService.UpdateAsync(quote);
+            else
+                await QuoteService.CreateAsync(quote);
+
+            _dialogVisible = false;
+            Snackbar.Add(_isEdit ? "Devis modifié" : "Devis créé", Severity.Success);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task ChangerStatut(Quote q, QuoteStatus nouveauStatut)
+    {
+        if (!_canEdit) return;
+        try
+        {
+            await QuoteService.ChangerStatutAsync(q.Id, nouveauStatut);
+            Snackbar.Add($"Devis {GetStatusLabel(nouveauStatut).ToLower()}", Severity.Success);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task ConvertirEnFacture(Quote q)
+    {
+        if (!_canEdit) return;
+        try
+        {
+            var invoice = await QuoteService.ConvertirEnFactureAsync(q.Id);
+            Snackbar.Add("Facture créée en brouillon depuis le devis", Severity.Success);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task Delete(Quote q)
+    {
+        if (!_canEdit) return;
+        try
+        {
+            await QuoteService.DeleteAsync(q.Id);
+            Snackbar.Add("Brouillon supprimé", Severity.Info);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task DownloadQuotePdf(Quote quote)
+    {
+        if (string.IsNullOrEmpty(quote.CheminPdf))
+        {
+            Snackbar.Add("PDF introuvable", Severity.Error);
+            return;
+        }
+        var url = Navigation.ToAbsoluteUri($"/download/quotes/{quote.Id}/pdf").ToString();
+        await JS.InvokeVoidAsync("open", url, "_blank");
+    }
+}

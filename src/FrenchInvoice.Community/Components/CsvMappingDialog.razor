@@ -1,0 +1,339 @@
+@inject BankImportService BankService
+@inject ISnackbar Snackbar
+
+<MudDialog Style="max-height: 90vh;" DefaultFocus="DefaultFocus.None">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.TableChart" Class="mr-2" />
+            @(IsEdit ? "Modifier le profil" : "Nouveau profil d'import CSV")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <div style="max-height: 70vh; overflow-y: auto;">
+        @if (!_hasFile)
+        {
+            <MudText Class="mb-4">Chargez un fichier CSV pour configurer le mapping des colonnes.</MudText>
+            <MudButton HtmlTag="label" Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.CloudUpload" for="mappingFileInput">
+                Charger un fichier CSV
+            </MudButton>
+            <InputFile id="mappingFileInput" OnChange="OnFileSelected" accept=".csv" style="display:none" />
+        }
+        else
+        {
+            <MudGrid Class="mb-4">
+                <MudItem xs="8">
+                    <MudTextField @bind-Value="_profileName" Label="Nom du profil" Required="true"
+                                  Placeholder="Ex: Ma banque LCL" />
+                </MudItem>
+                <MudItem xs="4">
+                    <MudSelect @bind-Value="_profileType" Label="Type">
+                        <MudSelectItem Value="CsvProfileType.Banque">Banque (transactions)</MudSelectItem>
+                        <MudSelectItem Value="CsvProfileType.Plateforme">Plateforme (recettes)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+            </MudGrid>
+
+            <MudGrid Class="mb-4">
+                <MudItem xs="6" sm="3">
+                    <MudSelect @bind-Value="_separator" Label="Séparateur" Dense="true">
+                        <MudSelectItem Value="@(";")">;  (point-virgule)</MudSelectItem>
+                        <MudSelectItem Value="@(",")">,  (virgule)</MudSelectItem>
+                        <MudSelectItem Value="@("\\t")">Tab</MudSelectItem>
+                        <MudSelectItem Value="@("|")">|  (pipe)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudNumericField @bind-Value="_headerRow" Label="Ligne d'en-tête" Min="0" Max="10"
+                                     HelperText="0 = pas d'en-tête" />
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudTextField @bind-Value="_dateFormat" Label="Format de date"
+                                  Placeholder="dd/MM/yyyy" HelperText="Vide = auto-détection" />
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="RefreshPreview"
+                               StartIcon="@Icons.Material.Filled.Refresh" Class="mt-2">
+                        Actualiser
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+
+            @if (_headers != null || _previewRows.Any())
+            {
+                <MudText Typo="Typo.subtitle1" Class="mb-2">Mapping des colonnes</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                    Associez chaque colonne du CSV à un champ. Utilisez soit Montant (colonne unique), soit Débit + Crédit (colonnes séparées).
+                </MudText>
+
+                @* Mapping : une ligne de sélecteurs par colonne *@
+                <MudGrid Class="mb-4" Spacing="1">
+                    @for (int c = 0; c < _columnCount; c++)
+                    {
+                        var idx = c;
+                        <MudItem xs="6" sm="4" md="3" lg="2">
+                            <MudSelect T="ColumnRole" @bind-Value="_columnRoles[idx]" Dense="true"
+                                       Label="@(_headers != null && idx < _headers.Length ? _headers[idx] : $"Col {idx}")"
+                                       Margin="Margin.Dense" Variant="Variant.Outlined">
+                                <MudSelectItem Value="ColumnRole.Ignorer">— Ignorer</MudSelectItem>
+                                <MudSelectItem Value="ColumnRole.Date">Date</MudSelectItem>
+                                <MudSelectItem Value="ColumnRole.Libelle">Libellé</MudSelectItem>
+                                <MudSelectItem Value="ColumnRole.Montant">Montant</MudSelectItem>
+                                <MudSelectItem Value="ColumnRole.Debit">Débit</MudSelectItem>
+                                <MudSelectItem Value="ColumnRole.Credit">Crédit</MudSelectItem>
+                                <MudSelectItem Value="ColumnRole.Solde">Solde</MudSelectItem>
+                                @if (_profileType == CsvProfileType.Plateforme)
+                                {
+                                    <MudSelectItem Value="ColumnRole.Client">Client</MudSelectItem>
+                                    <MudSelectItem Value="ColumnRole.ModePaiement">Mode paiement</MudSelectItem>
+                                    <MudSelectItem Value="ColumnRole.Reference">Référence</MudSelectItem>
+                                    <MudSelectItem Value="ColumnRole.Frais">Frais</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                    }
+                </MudGrid>
+
+                @* Preview des données *@
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Aperçu des données (@_previewRows.Count lignes)</MudText>
+                <div style="overflow-x: auto; border: 1px solid #e0e0e0; border-radius: 4px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                        <thead style="background: #f5f5f5;">
+                            <tr>
+                                @if (_headers != null)
+                                {
+                                    @for (int c = 0; c < _columnCount; c++)
+                                    {
+                                        <th style="padding: 6px 10px; text-align: left; white-space: nowrap; border-bottom: 2px solid #ddd;">
+                                            @(c < _headers.Length ? _headers[c] : "")
+                                        </th>
+                                    }
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _previewRows)
+                            {
+                                <tr style="border-bottom: 1px solid #eee;">
+                                    @for (int c = 0; c < _columnCount; c++)
+                                    {
+                                        <td style="padding: 4px 10px; white-space: nowrap;">@(c < row.Length ? row[c] : "")</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_validationError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-2">@_validationError</MudAlert>
+            }
+        }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annuler</MudButton>
+        @if (_hasFile)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save"
+                       Disabled="@(!_hasFile || string.IsNullOrWhiteSpace(_profileName))">
+                @(IsEdit ? "Enregistrer" : "Créer le profil")
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public CsvMappingProfile? ExistingProfile { get; set; }
+
+    public bool IsEdit => ExistingProfile != null;
+
+    private string _csvContent = string.Empty;
+    private bool _hasFile;
+    private string _profileName = string.Empty;
+    private string _separator = ";";
+    private int _headerRow = 1;
+    private string _dateFormat = string.Empty;
+    private string[]? _headers;
+    private List<string[]> _previewRows = new();
+    private int _columnCount;
+    private ColumnRole[] _columnRoles = Array.Empty<ColumnRole>();
+    private string? _validationError;
+
+    private CsvProfileType _profileType = CsvProfileType.Banque;
+
+    private enum ColumnRole { Ignorer, Date, Libelle, Montant, Debit, Credit, Solde, Client, ModePaiement, Reference, Frais }
+
+    [Parameter]
+    public CsvProfileType DefaultProfileType { get; set; } = CsvProfileType.Banque;
+
+    protected override void OnInitialized()
+    {
+        _profileType = DefaultProfileType;
+        if (ExistingProfile != null)
+        {
+            _profileName = ExistingProfile.Nom;
+            _separator = ExistingProfile.Separator;
+            _headerRow = ExistingProfile.HeaderRow;
+            _dateFormat = ExistingProfile.DateFormat;
+            _profileType = ExistingProfile.ProfileType;
+        }
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        using var reader = new StreamReader(e.File.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024));
+        _csvContent = await reader.ReadToEndAsync();
+        _hasFile = true;
+
+        // Auto-détection séparateur
+        _separator = BankImportService.DetectSeparator(_csvContent);
+
+        RefreshPreview();
+        StateHasChanged();
+    }
+
+    private void RefreshPreview()
+    {
+        _headers = BankService.GetHeaders(_csvContent, _separator, _headerRow);
+        _previewRows = BankService.PreviewCsv(_csvContent, _separator, _headerRow);
+        _columnCount = Math.Max(
+            _headers?.Length ?? 0,
+            _previewRows.Any() ? _previewRows.Max(r => r.Length) : 0);
+
+        // Initialiser les rôles si pas encore fait ou si le nombre de colonnes a changé
+        if (_columnRoles.Length != _columnCount)
+        {
+            _columnRoles = new ColumnRole[_columnCount];
+
+            // Pré-remplir à partir du profil existant si applicable
+            if (ExistingProfile != null)
+            {
+                SetRole(ExistingProfile.DateColumn, ColumnRole.Date);
+                SetRole(ExistingProfile.LibelleColumn, ColumnRole.Libelle);
+                if (ExistingProfile.MontantColumn.HasValue)
+                    SetRole(ExistingProfile.MontantColumn.Value, ColumnRole.Montant);
+                if (ExistingProfile.DebitColumn.HasValue)
+                    SetRole(ExistingProfile.DebitColumn.Value, ColumnRole.Debit);
+                if (ExistingProfile.CreditColumn.HasValue)
+                    SetRole(ExistingProfile.CreditColumn.Value, ColumnRole.Credit);
+                if (ExistingProfile.SoldeColumn.HasValue)
+                    SetRole(ExistingProfile.SoldeColumn.Value, ColumnRole.Solde);
+                if (ExistingProfile.ClientColumn.HasValue)
+                    SetRole(ExistingProfile.ClientColumn.Value, ColumnRole.Client);
+                if (ExistingProfile.ModePaiementColumn.HasValue)
+                    SetRole(ExistingProfile.ModePaiementColumn.Value, ColumnRole.ModePaiement);
+                if (ExistingProfile.ReferenceColumn.HasValue)
+                    SetRole(ExistingProfile.ReferenceColumn.Value, ColumnRole.Reference);
+                if (ExistingProfile.FraisColumn.HasValue)
+                    SetRole(ExistingProfile.FraisColumn.Value, ColumnRole.Frais);
+            }
+            else
+            {
+                // Auto-guess basé sur les noms de colonnes
+                AutoGuessRoles();
+            }
+        }
+
+        _validationError = null;
+    }
+
+    private void SetRole(int index, ColumnRole role)
+    {
+        if (index >= 0 && index < _columnRoles.Length)
+            _columnRoles[index] = role;
+    }
+
+    private void AutoGuessRoles()
+    {
+        if (_headers == null) return;
+
+        for (int i = 0; i < _headers.Length && i < _columnRoles.Length; i++)
+        {
+            var h = _headers[i].ToLowerInvariant().Trim();
+            if (h.Contains("date"))
+                _columnRoles[i] = ColumnRole.Date;
+            else if (h.Contains("libel") || h == "label" || h.Contains("description") || h.Contains("motif"))
+                _columnRoles[i] = ColumnRole.Libelle;
+            else if (h.Contains("montant") || h == "amount")
+                _columnRoles[i] = ColumnRole.Montant;
+            else if (h.Contains("débit") || h.Contains("debit"))
+                _columnRoles[i] = ColumnRole.Debit;
+            else if (h.Contains("crédit") || h.Contains("credit"))
+                _columnRoles[i] = ColumnRole.Credit;
+            else if (h.Contains("solde") || h.Contains("balance"))
+                _columnRoles[i] = ColumnRole.Solde;
+            else if (h.Contains("client") || h.Contains("customer") || h.Contains("nom") || h.Contains("name"))
+                _columnRoles[i] = ColumnRole.Client;
+            else if (h.Contains("mode") || h.Contains("type") || h.Contains("method"))
+                _columnRoles[i] = ColumnRole.ModePaiement;
+            else if (h.Contains("ref") || h.Contains("id") || h.Contains("transaction"))
+                _columnRoles[i] = ColumnRole.Reference;
+            else if (h.Contains("frais") || h.Contains("fee") || h.Contains("commission"))
+                _columnRoles[i] = ColumnRole.Frais;
+        }
+    }
+
+    private void Save()
+    {
+        // Validation
+        var dateCol = Array.IndexOf(_columnRoles, ColumnRole.Date);
+        var libelleCol = Array.IndexOf(_columnRoles, ColumnRole.Libelle);
+        var montantCol = Array.IndexOf(_columnRoles, ColumnRole.Montant);
+        var debitCol = Array.IndexOf(_columnRoles, ColumnRole.Debit);
+        var creditCol = Array.IndexOf(_columnRoles, ColumnRole.Credit);
+        var soldeCol = Array.IndexOf(_columnRoles, ColumnRole.Solde);
+
+        if (dateCol < 0)
+        {
+            _validationError = "Veuillez sélectionner la colonne Date.";
+            return;
+        }
+        if (libelleCol < 0)
+        {
+            _validationError = "Veuillez sélectionner la colonne Libellé.";
+            return;
+        }
+        if (montantCol < 0 && (debitCol < 0 || creditCol < 0))
+        {
+            _validationError = "Veuillez sélectionner soit une colonne Montant, soit les colonnes Débit et Crédit.";
+            return;
+        }
+
+        var clientCol = Array.IndexOf(_columnRoles, ColumnRole.Client);
+        var modePaiementCol = Array.IndexOf(_columnRoles, ColumnRole.ModePaiement);
+        var referenceCol = Array.IndexOf(_columnRoles, ColumnRole.Reference);
+        var fraisCol = Array.IndexOf(_columnRoles, ColumnRole.Frais);
+
+        var profile = ExistingProfile ?? new CsvMappingProfile();
+        profile.Nom = _profileName.Trim();
+        profile.ProfileType = _profileType;
+        profile.Separator = _separator;
+        profile.HeaderRow = _headerRow;
+        profile.DateFormat = _dateFormat;
+        profile.DateColumn = dateCol;
+        profile.LibelleColumn = libelleCol;
+        profile.MontantColumn = montantCol >= 0 ? montantCol : null;
+        profile.DebitColumn = debitCol >= 0 ? debitCol : null;
+        profile.CreditColumn = creditCol >= 0 ? creditCol : null;
+        profile.SoldeColumn = soldeCol >= 0 ? soldeCol : null;
+        profile.ClientColumn = clientCol >= 0 ? clientCol : null;
+        profile.ModePaiementColumn = modePaiementCol >= 0 ? modePaiementCol : null;
+        profile.ReferenceColumn = referenceCol >= 0 ? referenceCol : null;
+        profile.FraisColumn = fraisCol >= 0 ? fraisCol : null;
+        profile.UpdatedAt = DateTime.UtcNow;
+
+        if (!IsEdit)
+            profile.CreatedAt = DateTime.UtcNow;
+
+        MudDialog.Close(DialogResult.Ok(profile));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

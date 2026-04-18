@@ -1,0 +1,230 @@
+@page "/expenses"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ISnackbar Snackbar
+@inject ITenantProvider TenantProvider
+
+<PageTitle>Dépenses — FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Dépenses</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="4" md="3">
+            <MudDatePicker Label="Date début" @bind-Date="_filterDateStart" DateFormat="dd/MM/yyyy"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="4" md="3">
+            <MudDatePicker Label="Date fin" @bind-Date="_filterDateEnd" DateFormat="dd/MM/yyyy"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="4" md="3" Class="d-flex align-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ApplyFilter"
+                       StartIcon="@Icons.Material.Filled.FilterAlt">Filtrer</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_canEdit)
+{
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenAddDialog" Class="mb-4"
+               StartIcon="@Icons.Material.Filled.Add">
+        Nouvelle dépense
+    </MudButton>
+}
+
+<MudTable T="Expense" Items="@_expenses" Dense="true" Hover="true" Striped="true"
+          GroupBy="@_groupDefinition" GroupHeaderStyle="background-color:var(--mud-palette-primary); color:white;">
+    <ColGroup>
+        <col style="width:110px;" />
+        <col />
+        <col style="width:150px;" />
+        <col style="width:110px;" />
+        <col style="width:110px;" />
+        <col style="width:100px;" />
+    </ColGroup>
+    <HeaderContent>
+        <MudTh>Date</MudTh>
+        <MudTh>Description</MudTh>
+        <MudTh>Fournisseur</MudTh>
+        <MudTh>Montant</MudTh>
+        <MudTh>Catégorie</MudTh>
+        <MudTh>Actions</MudTh>
+    </HeaderContent>
+    <GroupHeaderTemplate>
+        <MudTh colspan="6" Style="background-color: var(--mud-palette-primary-lighten); font-weight:bold; padding:8px 16px;">
+            @{
+                var monthKey = (string)context.Key;
+                var monthItems = _expenses.Where(e => $"{e.Date.Year}-{e.Date.Month:D2}" == monthKey).ToList();
+                var monthTotal = monthItems.Sum(e => e.Montant);
+            }
+            @FormatMonthKey(monthKey) — @monthItems.Count dépense(s) — @monthTotal.ToString("N2") &euro;
+        </MudTh>
+    </GroupHeaderTemplate>
+    <RowTemplate>
+        <MudTd DataLabel="Date">@context.Date.ToString("dd/MM/yyyy")</MudTd>
+        <MudTd DataLabel="Description">@context.Description</MudTd>
+        <MudTd DataLabel="Fournisseur">@context.Fournisseur</MudTd>
+        <MudTd DataLabel="Montant">
+            <MudText Color="Color.Error">@context.Montant.ToString("N2") &euro;</MudText>
+        </MudTd>
+        <MudTd DataLabel="Catégorie">@context.Categorie</MudTd>
+        <MudTd DataLabel="Actions">
+            @if (_canEdit)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                               OnClick="() => OpenEditDialog(context)" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="() => DeleteExpense(context)" />
+            }
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+<MudPaper Class="pa-4 mt-2" Elevation="1">
+    <MudText Typo="Typo.h6">Total : @_total.ToString("N2") &euro;</MudText>
+</MudPaper>
+
+<MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_isEdit ? "Modifier la dépense" : "Nouvelle dépense")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudDatePicker Label="Date" @bind-Date="_editDate" Required="true" DateFormat="dd/MM/yyyy" />
+            <MudTextField @bind-Value="_editItem.Description" Label="Description" Required="true" />
+            <MudTextField @bind-Value="_editItem.Fournisseur" Label="Fournisseur" Required="true" />
+            <MudNumericField @bind-Value="_editItem.Montant" Label="Montant (€)" Format="N2" Required="true" />
+            <MudSelect @bind-Value="_editItem.Categorie" Label="Catégorie">
+                <MudSelectItem Value="@("Logiciel / SaaS")">Logiciel / SaaS</MudSelectItem>
+                <MudSelectItem Value="@("Matériel")">Matériel</MudSelectItem>
+                <MudSelectItem Value="@("Fournitures")">Fournitures</MudSelectItem>
+                <MudSelectItem Value="@("Déplacement")">Déplacement</MudSelectItem>
+                <MudSelectItem Value="@("Formation")">Formation</MudSelectItem>
+                <MudSelectItem Value="@("Télécommunications")">Télécommunications</MudSelectItem>
+                <MudSelectItem Value="@("Autre")">Autre</MudSelectItem>
+            </MudSelect>
+            <MudSelect @bind-Value="_editItem.ModeReglement" Label="Mode de règlement">
+                <MudSelectItem Value="@("Virement")">Virement</MudSelectItem>
+                <MudSelectItem Value="@("Chèque")">Chèque</MudSelectItem>
+                <MudSelectItem Value="@("Espèces")">Espèces</MudSelectItem>
+                <MudSelectItem Value="@("Carte bancaire")">Carte bancaire</MudSelectItem>
+                <MudSelectItem Value="@("Prélèvement")">Prélèvement</MudSelectItem>
+                <MudSelectItem Value="@("PayPal")">PayPal</MudSelectItem>
+            </MudSelect>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _dialogVisible = false">Annuler</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveExpense">Enregistrer</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Expense> _expenses = new();
+    private Expense _editItem = new();
+    private DateTime? _editDate = DateTime.Today;
+    private bool _dialogVisible;
+    private bool _isEdit;
+    private MudForm? _form;
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true };
+
+    private DateTime? _filterDateStart = new DateTime(DateTime.Today.Year, 1, 1);
+    private DateTime? _filterDateEnd = DateTime.Today;
+    private decimal _total;
+    private bool _canEdit;
+
+    private readonly TableGroupDefinition<Expense> _groupDefinition = new()
+    {
+        GroupName = "Mois",
+        Selector = e => $"{e.Date.Year}-{e.Date.Month:D2}",
+        IsInitiallyExpanded = true
+    };
+
+    private static string FormatMonthKey(string key)
+    {
+        if (DateTime.TryParse($"{key}-01", out var d))
+            return d.ToString("MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"));
+        return key;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+        _canEdit = TenantProvider.CanEdit;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        using var db = DbFactory.CreateDbContext();
+        var query = db.Expenses.Where(e => e.EntityId == TenantProvider.EntityId).AsQueryable();
+
+        if (_filterDateStart.HasValue)
+            query = query.Where(e => e.Date >= _filterDateStart.Value);
+        if (_filterDateEnd.HasValue)
+            query = query.Where(e => e.Date <= _filterDateEnd.Value);
+
+        _expenses = await query.OrderByDescending(e => e.Date).ToListAsync();
+        _total = _expenses.Sum(e => e.Montant);
+    }
+
+    private async Task ApplyFilter() => await LoadData();
+
+    private void OpenAddDialog()
+    {
+        _editItem = new Expense { Date = DateTime.Today };
+        _editDate = DateTime.Today;
+        _isEdit = false;
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(Expense exp)
+    {
+        _editItem = new Expense
+        {
+            Id = exp.Id, Date = exp.Date, Montant = exp.Montant,
+            Description = exp.Description, Fournisseur = exp.Fournisseur,
+            Categorie = exp.Categorie, ModeReglement = exp.ModeReglement,
+            Justificatif = exp.Justificatif,
+            CreatedAt = exp.CreatedAt
+        };
+        _editDate = exp.Date;
+        _isEdit = true;
+        _dialogVisible = true;
+    }
+
+    private async Task SaveExpense()
+    {
+        if (!_canEdit) return;
+        if (_editDate.HasValue)
+            _editItem.Date = _editDate.Value;
+
+        _editItem.UpdatedAt = DateTime.UtcNow;
+
+        using var db = DbFactory.CreateDbContext();
+        if (_isEdit)
+        {
+            db.Expenses.Update(_editItem);
+        }
+        else
+        {
+            _editItem.EntityId = TenantProvider.EntityId;
+            _editItem.CreatedAt = DateTime.UtcNow;
+            db.Expenses.Add(_editItem);
+        }
+        await db.SaveChangesAsync();
+        _dialogVisible = false;
+        Snackbar.Add(_isEdit ? "Dépense modifiée" : "Dépense ajoutée", Severity.Success);
+        await LoadData();
+    }
+
+    private async Task DeleteExpense(Expense exp)
+    {
+        if (!_canEdit) return;
+        using var db = DbFactory.CreateDbContext();
+        db.Expenses.Remove(exp);
+        await db.SaveChangesAsync();
+        Snackbar.Add("Dépense supprimée", Severity.Info);
+        await LoadData();
+    }
+}
