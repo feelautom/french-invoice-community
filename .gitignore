@@ -6,6 +6,11 @@ obj/
 *.db
 *.db-shm
 *.db-wal
-Data/
+# Runtime data (SQLite DB + generated PDFs) — but not source code Data/ folders
+**/Data/*.db
+**/Data/*.db-shm
+**/Data/*.db-wal
+**/Data/invoices/
+**/Data/quotes/
 wwwroot/_framework/
 appsettings.Development.json
