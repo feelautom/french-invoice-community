@@ -2,6 +2,8 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject ITenantProvider TenantProvider
+@inject HashChainService HashChainService
+@inject ClosingService ClosingService
 
 <PageTitle>Dépenses — FrenchInvoice</PageTitle>
 
@@ -201,6 +203,12 @@
 
         _editItem.UpdatedAt = DateTime.UtcNow;
 
+        if (!_isEdit && await ClosingService.IsDateLockedAsync(TenantProvider.EntityId, _editItem.Date))
+        {
+            Snackbar.Add("Période clôturée", Severity.Error);
+            return;
+        }
+
         using var db = DbFactory.CreateDbContext();
         if (_isEdit)
         {
@@ -213,6 +221,10 @@
             db.Expenses.Add(_editItem);
         }
         await db.SaveChangesAsync();
+
+        if (!_isEdit)
+            await HashChainService.RecordExpenseAsync(_editItem);
+
         _dialogVisible = false;
         Snackbar.Add(_isEdit ? "Dépense modifiée" : "Dépense ajoutée", Severity.Success);
         await LoadData();
@@ -221,6 +233,11 @@
     private async Task DeleteExpense(Expense exp)
     {
         if (!_canEdit) return;
+        if (await ClosingService.IsDateLockedAsync(TenantProvider.EntityId, exp.Date))
+        {
+            Snackbar.Add("Période clôturée", Severity.Error);
+            return;
+        }
         using var db = DbFactory.CreateDbContext();
         db.Expenses.Remove(exp);
         await db.SaveChangesAsync();

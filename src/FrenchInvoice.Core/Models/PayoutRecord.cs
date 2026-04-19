@@ -4,6 +4,8 @@ public class PayoutRecord : IEntityScoped
 {
     public int Id { get; set; }
     public int EntityId { get; set; }
+    public int? PropertyId { get; set; }
+    public Property? Property { get; set; }
     public string Platform { get; set; } = "";
     public string ExternalId { get; set; } = "";
     public DateTime Date { get; set; }

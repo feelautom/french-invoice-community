@@ -5,10 +5,36 @@
 @inject ITenantProvider TenantProvider
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
+@inject FecExportService FecExportService
 
 <PageTitle>Export / Import — FrenchInvoice</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-4">Export / Import des donnees</MudText>
+
+@* ── EXPORT FEC ── *@
+<MudPaper Class="pa-6 mb-4" Elevation="2">
+    <MudText Typo="Typo.h5" Class="mb-3">Export FEC (Fichier des Ecritures Comptables)</MudText>
+    <MudText Typo="Typo.body1" Class="mb-4">
+        Fichier normalise requis par l'administration fiscale en cas de controle.
+        Format TSV conforme aux specifications de la DGFiP.
+    </MudText>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+        <MudNumericField T="int" @bind-Value="_fecYear" Label="Annee" Min="2020" Max="2099"
+                         Variant="Variant.Outlined" Style="max-width: 150px;" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ExportFec"
+                   StartIcon="@Icons.Material.Filled.Download" Disabled="_exportingFec" Size="Size.Large">
+            @if (_exportingFec)
+            {
+                <MudProgressCircular Size="Size.Small" Color="Color.Inherit" Indeterminate="true" Class="mr-2" />
+                <span>Export en cours...</span>
+            }
+            else
+            {
+                <span>Exporter FEC</span>
+            }
+        </MudButton>
+    </MudStack>
+</MudPaper>
 
 @* ── EXPORT ── *@
 <MudPaper Class="pa-6 mb-4" Elevation="2">
@@ -97,6 +123,8 @@
 </MudPaper>
 
 @code {
+    private bool _exportingFec;
+    private int _fecYear = DateTime.Now.Year;
     private bool _exporting;
     private bool _importing;
     private ImportValidation? _importValidation;
@@ -105,6 +133,28 @@
     protected override async Task OnInitializedAsync()
     {
         await TenantProvider.InitializeAsync();
+    }
+
+    private async Task ExportFec()
+    {
+        _exportingFec = true;
+        StateHasChanged();
+
+        try
+        {
+            var (data, fileName) = await FecExportService.GenerateFecAsync(TenantProvider.EntityId, _fecYear);
+            var base64 = Convert.ToBase64String(data);
+            await JS.InvokeVoidAsync("downloadFile", fileName, "text/plain", base64);
+            Snackbar.Add("Export FEC termine", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erreur export FEC : {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _exportingFec = false;
+        }
     }
 
     private async Task Export()

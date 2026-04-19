@@ -293,7 +293,10 @@ public class InvoiceServiceTests : IDisposable
 
     private InvoiceService CreateService(int entityId)
     {
-        return new InvoiceService(_db.CreateFactory(), _pdfMock.Object, new TestTenantProvider(entityId));
+        var factory = _db.CreateFactory();
+        var hashChain = new HashChainService(factory, Microsoft.Extensions.Logging.Abstractions.NullLogger<HashChainService>.Instance);
+        var closing = new ClosingService(factory, Microsoft.Extensions.Logging.Abstractions.NullLogger<ClosingService>.Instance);
+        return new InvoiceService(factory, _pdfMock.Object, new TestTenantProvider(entityId), hashChain, closing);
     }
 
     private static Invoice MakeInvoice(int clientId) => new()

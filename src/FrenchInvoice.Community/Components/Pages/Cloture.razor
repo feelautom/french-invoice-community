@@ -1,0 +1,233 @@
+@page "/cloture"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject ITenantProvider TenantProvider
+@inject HashChainService HashChainService
+@inject ClosingService ClosingService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Clôture comptable — FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">
+    <MudIcon Icon="@Icons.Material.Filled.Lock" Class="mr-2" />Clôture comptable
+</MudText>
+
+@* --- Vérification intégrité de la chaîne --- *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.h6" Class="mb-3">Intégrité de la chaîne comptable</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="VerifyChain"
+               StartIcon="@Icons.Material.Filled.VerifiedUser" Disabled="_verifyingChain">
+        @if (_verifyingChain)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+        }
+        Vérifier l'intégrité de la chaîne
+    </MudButton>
+
+    @if (_chainResult != null)
+    {
+        @if (_chainResult.IsValid)
+        {
+            <MudAlert Severity="Severity.Success" Class="mt-3">
+                Chaîne valide — @_chainResult.EntryCount écriture(s) vérifiée(s).
+            </MudAlert>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">
+                Chaîne corrompue — @_chainResult.Error
+            </MudAlert>
+        }
+    }
+</MudPaper>
+
+@* --- Nouvelle clôture --- *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.h6" Class="mb-3">Nouvelle clôture</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudDatePicker Label="Date de clôture" @bind-Date="_closingDate" DateFormat="dd/MM/yyyy"
+                           Variant="Variant.Outlined" Margin="Margin.Dense"
+                           MaxDate="DateTime.Today.AddDays(-1)"
+                           MinDate="_minClosingDate" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_closingNotes" Label="Notes (optionnel)"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="4" Class="d-flex align-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="ConfirmClosePeriod"
+                       StartIcon="@Icons.Material.Filled.Lock" Disabled="_closing || _closingDate == null">
+                @if (_closing)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Clôturer la période
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@* --- Historique des clôtures --- *@
+<MudPaper Class="pa-4" Elevation="1">
+    <MudText Typo="Typo.h6" Class="mb-3">Historique des clôtures</MudText>
+
+    <MudTable T="AccountingPeriodClosing" Items="@_closings" Dense="true" Hover="true" Striped="true">
+        <HeaderContent>
+            <MudTh>Date de clôture</MudTh>
+            <MudTh>Clôturé le</MudTh>
+            <MudTh>Par</MudTh>
+            <MudTh>Écritures</MudTh>
+            <MudTh>Recettes</MudTh>
+            <MudTh>Dépenses</MudTh>
+            <MudTh>Hash</MudTh>
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Date de clôture">@context.PeriodEnd.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd DataLabel="Clôturé le">@context.ClosedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd DataLabel="Par">@context.ClosedBy</MudTd>
+            <MudTd DataLabel="Écritures">@context.EntryCount</MudTd>
+            <MudTd DataLabel="Recettes">
+                <MudText Color="Color.Success">@context.TotalRecettes.ToString("N2") &euro;</MudText>
+            </MudTd>
+            <MudTd DataLabel="Dépenses">
+                <MudText Color="Color.Error">@context.TotalDepenses.ToString("N2") &euro;</MudText>
+            </MudTd>
+            <MudTd DataLabel="Hash">
+                <MudTooltip Text="@context.Hash">
+                    <MudText Typo="Typo.body2" Style="font-family: monospace;">@context.Hash[..16]...</MudText>
+                </MudTooltip>
+            </MudTd>
+            <MudTd DataLabel="Actions">
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="@GetVerifyColor(context.Id)"
+                           OnClick="() => VerifyClosing(context)">
+                    @GetVerifyLabel(context.Id)
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>Aucune clôture enregistrée.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<AccountingPeriodClosing> _closings = new();
+    private ChainVerificationResult? _chainResult;
+    private bool _verifyingChain;
+
+    private DateTime? _closingDate;
+    private string? _closingNotes;
+    private bool _closing;
+    private DateTime? _minClosingDate;
+
+    private readonly Dictionary<int, bool?> _closingVerifications = new();
+    private string _username = "admin";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _username = authState.User.Identity?.Name ?? "admin";
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _closings = await ClosingService.GetClosingsAsync(TenantProvider.EntityId);
+        var lastDate = await ClosingService.GetLastClosingDateAsync(TenantProvider.EntityId);
+        _minClosingDate = lastDate?.AddDays(1);
+        _closingVerifications.Clear();
+    }
+
+    private async Task VerifyChain()
+    {
+        _verifyingChain = true;
+        try
+        {
+            _chainResult = await HashChainService.VerifyChainAsync(TenantProvider.EntityId);
+        }
+        finally
+        {
+            _verifyingChain = false;
+        }
+    }
+
+    private async Task ConfirmClosePeriod()
+    {
+        if (_closingDate == null) return;
+
+        using var db = DbFactory.CreateDbContext();
+        var entityId = TenantProvider.EntityId;
+        var periodEnd = _closingDate.Value;
+
+        var entries = await db.AccountingEntries
+            .Where(e => e.EntityId == entityId && e.Date <= periodEnd)
+            .ToListAsync();
+
+        var totalRecettes = entries.Where(e => e.EntryType == AccountingEntryType.Recette).Sum(e => e.Montant);
+        var totalDepenses = entries.Where(e => e.EntryType == AccountingEntryType.Depense).Sum(e => e.Montant);
+
+        var confirmed = await DialogService.ShowMessageBox(
+            "Confirmation de clôture",
+            $"Clôturer la période jusqu'au {periodEnd:dd/MM/yyyy} ?\n\n" +
+            $"Écritures concernées : {entries.Count}\n" +
+            $"Total recettes : {totalRecettes:N2} \u20ac\n" +
+            $"Total dépenses : {totalDepenses:N2} \u20ac\n\n" +
+            "Cette action est irréversible. Les écritures de cette période ne pourront plus être modifiées.",
+            yesText: "Clôturer", cancelText: "Annuler");
+
+        if (confirmed != true) return;
+
+        _closing = true;
+        try
+        {
+            var closing = await ClosingService.ClosePeriodAsync(entityId, periodEnd, _username);
+            if (!string.IsNullOrWhiteSpace(_closingNotes))
+            {
+                using var db2 = DbFactory.CreateDbContext();
+                closing.Notes = _closingNotes;
+                db2.AccountingPeriodClosings.Update(closing);
+                await db2.SaveChangesAsync();
+            }
+
+            Snackbar.Add($"Période clôturée jusqu'au {periodEnd:dd/MM/yyyy}", Severity.Success);
+            _closingDate = null;
+            _closingNotes = null;
+            await LoadData();
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _closing = false;
+        }
+    }
+
+    private async Task VerifyClosing(AccountingPeriodClosing closing)
+    {
+        var result = await ClosingService.VerifyClosingAsync(TenantProvider.EntityId, closing.Id);
+        _closingVerifications[closing.Id] = result;
+
+        if (result)
+            Snackbar.Add($"Clôture du {closing.PeriodEnd:dd/MM/yyyy} : hash valide", Severity.Success);
+        else
+            Snackbar.Add($"Clôture du {closing.PeriodEnd:dd/MM/yyyy} : hash invalide !", Severity.Error);
+    }
+
+    private Color GetVerifyColor(int closingId)
+    {
+        if (!_closingVerifications.TryGetValue(closingId, out var result)) return Color.Default;
+        return result == true ? Color.Success : Color.Error;
+    }
+
+    private string GetVerifyLabel(int closingId)
+    {
+        if (!_closingVerifications.TryGetValue(closingId, out var result)) return "Vérifier";
+        return result == true ? "Valide" : "Invalide";
+    }
+}

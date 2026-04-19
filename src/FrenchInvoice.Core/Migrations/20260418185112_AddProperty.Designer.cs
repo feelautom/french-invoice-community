@@ -3,6 +3,7 @@ using System;
 using FrenchInvoice.Core.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,116 +11,14 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace FrenchInvoice.Core.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260418185112_AddProperty")]
+    partial class AddProperty
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.15");
-
-            modelBuilder.Entity("FrenchInvoice.Core.Models.AccountingEntry", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("Date")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("EntityId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("EntryType")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("ExpenseId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Hash")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal>("Montant")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("PreviousHash")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("RevenueId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long>("SequenceNumber")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Tiers")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EntityId");
-
-                    b.HasIndex("ExpenseId");
-
-                    b.HasIndex("RevenueId");
-
-                    b.HasIndex("EntityId", "SequenceNumber")
-                        .IsUnique();
-
-                    b.ToTable("AccountingEntries");
-                });
-
-            modelBuilder.Entity("FrenchInvoice.Core.Models.AccountingPeriodClosing", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("ClosedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ClosedBy")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("EntityId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("EntryCount")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Hash")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("PeriodEnd")
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal>("TotalDepenses")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("TotalRecettes")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EntityId", "PeriodEnd")
-                        .IsUnique();
-
-                    b.ToTable("AccountingPeriodClosings");
-                });
 
             modelBuilder.Entity("FrenchInvoice.Core.Models.AuditLog", b =>
                 {
@@ -1222,21 +1121,6 @@ namespace FrenchInvoice.Core.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
-                });
-
-            modelBuilder.Entity("FrenchInvoice.Core.Models.AccountingEntry", b =>
-                {
-                    b.HasOne("FrenchInvoice.Core.Models.Expense", "Expense")
-                        .WithMany()
-                        .HasForeignKey("ExpenseId");
-
-                    b.HasOne("FrenchInvoice.Core.Models.Revenue", "Revenue")
-                        .WithMany()
-                        .HasForeignKey("RevenueId");
-
-                    b.Navigation("Expense");
-
-                    b.Navigation("Revenue");
                 });
 
             modelBuilder.Entity("FrenchInvoice.Core.Models.BankTransaction", b =>

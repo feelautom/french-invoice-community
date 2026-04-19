@@ -23,6 +23,9 @@ public class AppDbContext : DbContext
     public DbSet<QuoteLine> QuoteLines => Set<QuoteLine>();
     public DbSet<CsvMappingProfile> CsvMappingProfiles => Set<CsvMappingProfile>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<Property> Properties => Set<Property>();
+    public DbSet<AccountingEntry> AccountingEntries => Set<AccountingEntry>();
+    public DbSet<AccountingPeriodClosing> AccountingPeriodClosings => Set<AccountingPeriodClosing>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -163,6 +166,41 @@ public class AppDbContext : DbContext
             e.Property(l => l.TauxTVA).HasColumnType("decimal(5,2)");
             e.Property(l => l.MontantHT).HasColumnType("decimal(18,2)");
             e.HasOne(l => l.Quote).WithMany(q => q.Lignes).HasForeignKey(l => l.QuoteId);
+        });
+
+        // ── Property ──
+        modelBuilder.Entity<Property>(e =>
+        {
+            e.HasIndex(p => new { p.EntityId, p.Nom }).IsUnique();
+        });
+
+        // ── Relations Property (FK nullable sur tous les modèles concernés) ──
+        modelBuilder.Entity<Client>(e2 => e2.HasOne(c => c.Property).WithMany().HasForeignKey(c => c.PropertyId));
+        modelBuilder.Entity<Invoice>(e2 => e2.HasOne(i => i.Property).WithMany().HasForeignKey(i => i.PropertyId));
+        modelBuilder.Entity<Quote>(e2 => e2.HasOne(q => q.Property).WithMany().HasForeignKey(q => q.PropertyId));
+        modelBuilder.Entity<Revenue>(e2 => e2.HasOne(r => r.Property).WithMany().HasForeignKey(r => r.PropertyId));
+        modelBuilder.Entity<Expense>(e2 => e2.HasOne(x => x.Property).WithMany().HasForeignKey(x => x.PropertyId));
+        modelBuilder.Entity<BankTransaction>(e2 => e2.HasOne(b => b.Property).WithMany().HasForeignKey(b => b.PropertyId));
+        modelBuilder.Entity<PayoutRecord>(e2 => e2.HasOne(p => p.Property).WithMany().HasForeignKey(p => p.PropertyId));
+        modelBuilder.Entity<FixedCharge>(e2 => e2.HasOne(f => f.Property).WithMany().HasForeignKey(f => f.PropertyId));
+
+        // ── AccountingEntry ──
+        modelBuilder.Entity<AccountingEntry>(e =>
+        {
+            e.Property(a => a.Montant).HasColumnType("decimal(18,2)");
+            e.Property(a => a.EntryType).HasConversion<string>();
+            e.HasIndex(a => new { a.EntityId, a.SequenceNumber }).IsUnique();
+            e.HasIndex(a => a.EntityId);
+            e.HasOne(a => a.Revenue).WithMany().HasForeignKey(a => a.RevenueId);
+            e.HasOne(a => a.Expense).WithMany().HasForeignKey(a => a.ExpenseId);
+        });
+
+        // ── AccountingPeriodClosing ──
+        modelBuilder.Entity<AccountingPeriodClosing>(e =>
+        {
+            e.Property(c => c.TotalRecettes).HasColumnType("decimal(18,2)");
+            e.Property(c => c.TotalDepenses).HasColumnType("decimal(18,2)");
+            e.HasIndex(c => new { c.EntityId, c.PeriodEnd }).IsUnique();
         });
 
         // ── AuditLog ──

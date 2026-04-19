@@ -205,7 +205,10 @@ public class QuoteServiceTests : IDisposable
     private QuoteService CreateService(int entityId)
     {
         var tenant = new TestTenantProvider(entityId);
-        var invoiceSvc = new InvoiceService(_db.CreateFactory(), _pdfMock.Object, tenant);
+        var factory = _db.CreateFactory();
+        var hashChain = new HashChainService(factory, Microsoft.Extensions.Logging.Abstractions.NullLogger<HashChainService>.Instance);
+        var closing = new ClosingService(factory, Microsoft.Extensions.Logging.Abstractions.NullLogger<ClosingService>.Instance);
+        var invoiceSvc = new InvoiceService(factory, _pdfMock.Object, tenant, hashChain, closing);
         return new QuoteService(_db.CreateFactory(), _pdfMock.Object, invoiceSvc, tenant);
     }
 

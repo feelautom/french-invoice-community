@@ -4,6 +4,8 @@ public class BankTransaction : IEntityScoped
 {
     public int Id { get; set; }
     public int EntityId { get; set; }
+    public int? PropertyId { get; set; }
+    public Property? Property { get; set; }
     public DateTime Date { get; set; }
     public string Libelle { get; set; } = string.Empty;
     public decimal Montant { get; set; }

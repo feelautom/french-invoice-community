@@ -38,6 +38,9 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<SiretLookupService>();
 builder.Services.AddSingleton<NatureJuridiqueService>();
 builder.Services.AddScoped<AuditService>();
+builder.Services.AddScoped<HashChainService>();
+builder.Services.AddScoped<ClosingService>();
+builder.Services.AddScoped<FecExportService>();
 
 // Auth : toujours authentifie en tant qu'Admin de l'entite 1
 builder.Services.AddScoped<CommunityAuthStateProvider>();
@@ -79,6 +82,17 @@ using (var scope = app.Services.CreateScope())
 
         app.Logger.LogInformation("Community: entite et utilisateur admin crees automatiquement");
     }
+}
+
+// Backfill hash chain for existing entities
+using (var scope = app.Services.CreateScope())
+{
+    var hashChain = scope.ServiceProvider.GetRequiredService<HashChainService>();
+    var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
+    using var db = dbFactory.CreateDbContext();
+    var entityIds = db.Entities.Select(e => e.Id).ToList();
+    foreach (var eid in entityIds)
+        await hashChain.BackfillChainAsync(eid);
 }
 
 if (!app.Environment.IsDevelopment())

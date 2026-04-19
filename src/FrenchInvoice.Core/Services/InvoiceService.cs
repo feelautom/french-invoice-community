@@ -9,13 +9,17 @@ public class InvoiceService
     private readonly IDbContextFactory<AppDbContext> _factory;
     private readonly PdfGenerationService _pdfService;
     private readonly ITenantProvider _tenant;
+    private readonly HashChainService _hashChainService;
+    private readonly ClosingService _closingService;
 
     public InvoiceService(IDbContextFactory<AppDbContext> factory, PdfGenerationService pdfService,
-        ITenantProvider tenant)
+        ITenantProvider tenant, HashChainService hashChainService, ClosingService closingService)
     {
         _factory = factory;
         _pdfService = pdfService;
         _tenant = tenant;
+        _hashChainService = hashChainService;
+        _closingService = closingService;
     }
 
     public async Task<List<Invoice>> GetAllAsync(InvoiceStatus? statut = null, int? clientId = null,
@@ -179,6 +183,9 @@ public class InvoiceService
 
         var settings = await db.Entities.FirstAsync(e => e.Id == _tenant.EntityId);
 
+        if (await _closingService.IsDateLockedAsync(invoice.EntityId, DateTime.UtcNow))
+            throw new InvalidOperationException("La période comptable est clôturée.");
+
         // Créer la recette automatiquement
         var revenue = new Revenue
         {
@@ -195,6 +202,8 @@ public class InvoiceService
         };
         db.Revenues.Add(revenue);
         await db.SaveChangesAsync();
+
+        await _hashChainService.RecordRevenueAsync(revenue);
 
         invoice.Statut = InvoiceStatus.Payee;
         invoice.RevenueId = revenue.Id;

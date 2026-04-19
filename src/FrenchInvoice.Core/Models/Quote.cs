@@ -13,6 +13,8 @@ public class Quote : IEntityScoped
 {
     public int Id { get; set; }
     public int EntityId { get; set; }
+    public int? PropertyId { get; set; }
+    public Property? Property { get; set; }
     public string Numero { get; set; } = string.Empty;
     public DateTime DateEmission { get; set; } = DateTime.Today;
     public DateTime DateValidite { get; set; } = DateTime.Today.AddDays(30);
