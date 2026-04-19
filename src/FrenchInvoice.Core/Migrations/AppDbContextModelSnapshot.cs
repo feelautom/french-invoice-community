@@ -1186,61 +1186,6 @@ namespace FrenchInvoice.Core.Migrations
                     b.ToTable("SiretDatas");
                 });
 
-            modelBuilder.Entity("FrenchInvoice.Core.Models.Subscription", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime?>("ActivatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("AmountCents")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime?>("CancelledAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("CurrentPeriodEnd")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("CurrentPeriodStart")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("EntityId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("FailedAttemptsCount")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("LastStancerPaymentId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Plan")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("StancerCardToken")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EntityId")
-                        .IsUnique();
-
-                    b.ToTable("Subscriptions");
-                });
-
             modelBuilder.Entity("FrenchInvoice.Core.Models.User", b =>
                 {
                     b.Property<int>("Id")
@@ -1447,17 +1392,6 @@ namespace FrenchInvoice.Core.Migrations
                         .HasForeignKey("PropertyId");
 
                     b.Navigation("Property");
-                });
-
-            modelBuilder.Entity("FrenchInvoice.Core.Models.Subscription", b =>
-                {
-                    b.HasOne("FrenchInvoice.Core.Models.Entity", "Entity")
-                        .WithMany()
-                        .HasForeignKey("EntityId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Entity");
                 });
 
             modelBuilder.Entity("FrenchInvoice.Core.Models.User", b =>
