@@ -140,31 +140,6 @@
             </MudGrid>
         </MudPaper>
 
-        @* ── Plateformes de paiement ── *@
-        <MudPaper Class="pa-4 mb-4" Elevation="2">
-            <MudText Typo="Typo.h6" Class="mb-3">Plateformes de paiement</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3" Color="Color.Secondary">
-                Clés API secrètes pour la synchronisation des paiements. Laissez vide si vous n'utilisez pas la plateforme.
-            </MudText>
-
-            <MudGrid>
-                <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_stancerKey" Label="Clé secrète Stancer"
-                                  InputType="@(_showStancerKey ? InputType.Text : InputType.Password)"
-                                  Adornment="Adornment.End"
-                                  AdornmentIcon="@(_showStancerKey ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
-                                  OnAdornmentClick="() => _showStancerKey = !_showStancerKey" />
-                </MudItem>
-                <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_stripeKey" Label="Clé secrète Stripe"
-                                  InputType="@(_showStripeKey ? InputType.Text : InputType.Password)"
-                                  Adornment="Adornment.End"
-                                  AdornmentIcon="@(_showStripeKey ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
-                                  OnAdornmentClick="() => _showStripeKey = !_showStripeKey" />
-                </MudItem>
-            </MudGrid>
-        </MudPaper>
-
         @* ── Charges fixes mensuelles ── *@
         <MudPaper Class="pa-4 mb-4" Elevation="2">
             <MudText Typo="Typo.h6" Class="mb-3">Charges fixes mensuelles</MudText>
@@ -211,10 +186,6 @@
     private DateTime? _dateDebut;
     private List<FixedCharge> _charges = new();
     private List<FixedCharge> _chargesToDelete = new();
-    private bool _showStancerKey;
-    private bool _showStripeKey;
-    private string? _stancerKey;
-    private string? _stripeKey;
     private string? _iban;
     private string? _bic;
 
@@ -241,11 +212,9 @@
         _dateDebut = _settings?.DateDebutActivite;
         _charges = await db.FixedCharges.Where(c => c.EntityId == TenantProvider.EntityId).ToListAsync();
 
-        // Charger les clés API depuis Infisical (identifié par SIRET)
+        // Charger IBAN/BIC depuis le secret provider
         if (!string.IsNullOrEmpty(_settings?.NumeroSiret))
         {
-            _stancerKey = await SecretProvider.GetSecretAsync(_settings.NumeroSiret, "STANCER_SECRET_KEY");
-            _stripeKey = await SecretProvider.GetSecretAsync(_settings.NumeroSiret, "STRIPE_SECRET_KEY");
             _iban = await SecretProvider.GetSecretAsync(_settings.NumeroSiret, "IBAN");
             _bic = await SecretProvider.GetSecretAsync(_settings.NumeroSiret, "BIC");
         }
