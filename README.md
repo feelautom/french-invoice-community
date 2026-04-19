@@ -31,29 +31,36 @@ Factures Factur-X, devis, comptabilite, declarations URSSAF — tout-en-un, auto
 
 ## Installation
 
-### Prerequis
+Trois methodes au choix :
 
-- [Docker](https://docs.docker.com/get-docker/) et [Docker Compose](https://docs.docker.com/compose/install/)
-
-C'est tout. Pas besoin d'installer .NET, pas de base de donnees a configurer.
-
-### Option A — Depuis Docker Hub (le plus simple)
+### <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/docker/docker-original.svg" width="24" align="top" /> Docker Hub — Le plus simple
 
 ```bash
 docker run -d --name frenchinvoice -p 5555:8080 -v frenchinvoice-data:/app/Data feelautom/frenchinvoice-community:latest
 ```
 
-### Option B — Depuis les sources
+### <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg" width="24" align="top" /> Depuis les sources — Docker Compose
 
 ```bash
-git clone https://github.com/FrenchInvoice/frenchinvoice-community.git
-cd frenchinvoice-community
+git clone https://github.com/feelautom/french-invoice-community.git
+cd french-invoice-community
 docker-compose up -d
 ```
 
-### 3. Ouvrir
+### <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/dotnetcore/dotnetcore-original.svg" width="24" align="top" /> Sans Docker — .NET 9 SDK
 
-Rendez-vous sur [http://localhost:5555](http://localhost:5555).
+```bash
+# Prerequis : .NET 9 SDK — https://dotnet.microsoft.com/download/dotnet/9.0
+dotnet run --project src/FrenchInvoice.Community
+```
+
+> L'application demarre sur `http://localhost:5000` en mode .NET direct.
+
+---
+
+### Ouvrir l'application
+
+Rendez-vous sur [http://localhost:5555](http://localhost:5555) (Docker) ou [http://localhost:5000](http://localhost:5000) (.NET).
 
 Au premier lancement, un assistant de configuration vous guidera :
 
@@ -90,19 +97,6 @@ Vos donnees (base SQLite + PDFs) sont dans le volume Docker `community-data`. Po
 # Ou copier le volume directement
 docker cp frenchinvoice-community:/app/Data ./backup
 ```
-
-## Installation sans Docker
-
-Si vous preferez ne pas utiliser Docker :
-
-```bash
-# Prerequis : .NET 9 SDK
-# https://dotnet.microsoft.com/download/dotnet/9.0
-
-dotnet run --project src/FrenchInvoice.Community
-```
-
-L'application demarre sur `http://localhost:5000`.
 
 ## Stack technique
 
