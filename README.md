@@ -39,7 +39,7 @@ Trois methodes au choix :
 docker run -d --name frenchinvoice -p 5555:8080 -v frenchinvoice-data:/app/Data feelautom/frenchinvoice-community:latest
 ```
 
-### <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg" width="24" align="top" /> Depuis les sources — Docker Compose
+### <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/git/git-original.svg" width="24" align="top" /> Depuis les sources — Docker Compose
 
 ```bash
 git clone https://github.com/feelautom/french-invoice-community.git
