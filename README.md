@@ -6,6 +6,7 @@
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/)
 [![Blazor](https://img.shields.io/badge/Blazor-Server-512BD4?logo=blazor)](https://dotnet.microsoft.com/apps/aspnet/web-apps/blazor)
+[![Docker Pulls](https://img.shields.io/docker/pulls/feelautom/frenchinvoice-community)](https://hub.docker.com/r/feelautom/frenchinvoice-community)
 [![Factur-X](https://img.shields.io/badge/Factur--X-EN%2016931-green)](https://fnfe-mpe.org/factur-x/)
 
 ![FrenchInvoice](screenshot.png)
@@ -36,16 +37,17 @@ Factures Factur-X, devis, comptabilite, declarations URSSAF — tout-en-un, auto
 
 C'est tout. Pas besoin d'installer .NET, pas de base de donnees a configurer.
 
-### 1. Cloner le depot
+### Option A — Depuis Docker Hub (le plus simple)
+
+```bash
+docker run -d --name frenchinvoice -p 5555:8080 -v frenchinvoice-data:/app/Data feelautom/frenchinvoice-community:latest
+```
+
+### Option B — Depuis les sources
 
 ```bash
 git clone https://github.com/FrenchInvoice/frenchinvoice-community.git
 cd frenchinvoice-community
-```
-
-### 2. Lancer
-
-```bash
 docker-compose up -d
 ```
 
