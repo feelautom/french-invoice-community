@@ -26,6 +26,7 @@ public class AppDbContext : DbContext
     public DbSet<Property> Properties => Set<Property>();
     public DbSet<AccountingEntry> AccountingEntries => Set<AccountingEntry>();
     public DbSet<AccountingPeriodClosing> AccountingPeriodClosings => Set<AccountingPeriodClosing>();
+    public DbSet<Subscription> Subscriptions => Set<Subscription>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -209,6 +210,15 @@ public class AppDbContext : DbContext
             e.HasIndex(a => a.EntityId);
             e.HasIndex(a => a.CreatedAt);
             e.HasIndex(a => a.Action);
+        });
+
+        // ── Subscription ──
+        modelBuilder.Entity<Subscription>(e =>
+        {
+            e.Property(s => s.Status).HasConversion<string>();
+            e.Property(s => s.Plan).HasConversion<string>();
+            e.HasIndex(s => s.EntityId).IsUnique();
+            e.HasOne(s => s.Entity).WithMany().HasForeignKey(s => s.EntityId);
         });
     }
 }
