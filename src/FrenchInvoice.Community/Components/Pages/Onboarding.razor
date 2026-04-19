@@ -140,12 +140,6 @@
     {
         await TenantProvider.InitializeAsync();
 
-        if (TenantProvider.IsSuperAdmin)
-        {
-            Navigation.NavigateTo("/admin");
-            return;
-        }
-
         // Charger l'entité existante
         using var db = DbFactory.CreateDbContext();
         var entity = await db.Entities.FindAsync(TenantProvider.EntityId);
