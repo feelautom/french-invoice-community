@@ -21,7 +21,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="QuestPDF" Version="2025.*" />
+    <PackageReference Include="QuestPDF" Version="2026.*" />
     <PackageReference Include="ZUGFeRD-csharp" Version="18.*" />
   </ItemGroup>
 
