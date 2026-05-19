@@ -11,22 +11,34 @@
 
 ![FrenchInvoice](screenshot.png)
 
-Outil de gestion comptable complet pour **auto-entrepreneurs** et **micro-entreprises** en France.
+Outil de gestion comptable complet pour **indépendants** et **entreprises** en France : micro-entreprise, EI classique, EURL, SASU.
 
-Factures Factur-X, devis, comptabilité, déclarations URSSAF — tout-en-un, auto-hébergé, gratuit.
+Factures Factur-X, devis, comptabilité, déclarations URSSAF, bilans annuels — tout-en-un, auto-hébergé, gratuit.
 
 ## Fonctionnalités
 
+### Comptabilité & Fiscalité
+- **Multi-statut juridique** — Micro-entreprise, EI classique (réel), EURL (IR), SASU (IS)
+- **Simulateur de statut** — compare les 4 statuts côte à côte avec recommandation et projections
+- **Impôt sur le revenu** — simulation IR (barème 2025), IS pour SASU, versement libératoire
+- **Bilans annuels** — compte de résultat, bilan simplifié, génération PDF
+- **Déclarations URSSAF** — génération mensuelle ou trimestrielle, gestion multi-statut
+- **Dashboard** — trésorerie, CA, cotisations+CFP, bénéfice net, adapté au statut juridique
+- **Clôture d'exercice** — snapshot fiscal avec chaîne de hachage inaltérable
+- **ACRE** — calcul automatique des cotisations réduites la première année
+
+### Facturation
 - **Factures Factur-X** — PDF conformes avec XML embarqué (ZUGFeRD v2.3, profil Comfort)
 - **Devis** — création, envoi, expiration automatique, conversion en facture
-- **Comptabilité** — suivi CA, cotisations sociales, charges fixes/variables, bénéfice net
-- **Déclarations URSSAF** — génération mensuelle ou trimestrielle avec alertes échéances
-- **Dashboard** — trésorerie, progression vers le plafond, prochaine échéance URSSAF
+- **Mentions légales dynamiques** — adaptées automatiquement au statut juridique
+- **Export FEC** — Fichier des Écritures Comptables
+
+### Gestion
 - **Import bancaire** — CSV multi-banques (Boursobank, BNP, Crédit Mutuel, générique)
 - **Clients** — gestion complète avec recherche SIRET automatique
+- **Notes inline** — sur recettes et dépenses, édition au clic
 - **Export/Import** — sauvegarde ZIP avec intégrité SHA-256
 - **Livre des recettes** et **Registre des achats** en PDF
-- **ACRE** — calcul automatique des cotisations réduites la première année
 - **Mode sombre** — persistant entre les sessions
 
 ## Installation
@@ -117,13 +129,14 @@ FrenchInvoice génère des factures conformes à la législation française :
 - **Mentions légales obligatoires** : TVA art. 293B, pénalités de retard, indemnité 40 €
 - **Cadre de facturation** BT-23 pour la réforme e-invoicing (sept. 2026)
 
-## Taux de cotisations auto-entrepreneur (2026)
+## Statuts juridiques supportés
 
-| Catégorie | Taux |
-|-----------|------|
-| BIC — Vente de marchandises | 12.3% |
-| BIC — Prestations de services | 21.2% |
-| BNC — Libéral | 21.1% |
+| Statut | Cotisations | Fiscalité |
+|--------|-------------|-----------|
+| Micro-entreprise | Sur CA (taux configurable, défaut 25.6%) | IR + versement libératoire optionnel |
+| EI classique | Sur bénéfice (CA - dépenses) | IR |
+| EURL | Sur rémunération/bénéfice | IR |
+| SASU | Charges sociales sur salaire | IS + IR sur rémunération |
 
 ## FrenchInvoice SaaS
 
