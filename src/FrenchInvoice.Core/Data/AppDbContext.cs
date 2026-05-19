@@ -28,9 +28,11 @@ public class AppDbContext : DbContext
     public DbSet<Property> Properties => Set<Property>();
     public DbSet<AccountingEntry> AccountingEntries => Set<AccountingEntry>();
     public DbSet<AccountingPeriodClosing> AccountingPeriodClosings => Set<AccountingPeriodClosing>();
+    public DbSet<ExerciseClosure> ExerciseClosures => Set<ExerciseClosure>();
+    public DbSet<AnnualReport> AnnualReports => Set<AnnualReport>();
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // ── Entity ──
+        // -- Entity --
         modelBuilder.Entity<Entity>(e =>
         {
             e.Property(r => r.PlafondCA).HasColumnType("decimal(18,2)");
@@ -39,10 +41,11 @@ public class AppDbContext : DbContext
             e.Property(r => r.FraisVariables).HasColumnType("decimal(5,2)");
             e.Property(r => r.TypeActivite).HasConversion<string>();
             e.Property(r => r.PeriodiciteDeclaration).HasConversion<string>();
+            e.Property(r => r.StatutJuridique).HasConversion<string>().HasDefaultValue(LegalStatus.MicroEntreprise);
             e.HasOne(r => r.SiretData).WithMany().HasForeignKey(r => r.SiretDataId);
         });
 
-        // ── User ──
+        // -- User --
         modelBuilder.Entity<User>(e =>
         {
             e.HasIndex(u => u.Username).IsUnique();
@@ -50,7 +53,7 @@ public class AppDbContext : DbContext
             e.HasOne(u => u.Entity).WithMany().HasForeignKey(u => u.EntityId);
         });
 
-        // ── Revenue ──
+        // -- Revenue --
         modelBuilder.Entity<Revenue>(e =>
         {
             e.Property(r => r.Montant).HasColumnType("decimal(18,2)");
@@ -58,14 +61,14 @@ public class AppDbContext : DbContext
             e.HasIndex(r => r.EntityId);
         });
 
-        // ── Expense ──
+        // -- Expense --
         modelBuilder.Entity<Expense>(e =>
         {
             e.Property(r => r.Montant).HasColumnType("decimal(18,2)");
             e.HasIndex(r => r.EntityId);
         });
 
-        // ── Declaration ──
+        // -- Declaration --
         modelBuilder.Entity<Declaration>(e =>
         {
             e.Property(r => r.MontantCA).HasColumnType("decimal(18,2)");
@@ -75,24 +78,25 @@ public class AppDbContext : DbContext
             e.HasIndex(r => r.EntityId);
         });
 
-        // ── BankTransaction ──
+        // -- BankTransaction --
         modelBuilder.Entity<BankTransaction>(e =>
         {
             e.Property(r => r.Montant).HasColumnType("decimal(18,2)");
             e.Property(r => r.Solde).HasColumnType("decimal(18,2)");
+            e.Property(r => r.Type).HasDefaultValue(BankTransactionType.Uncategorized);
             e.HasOne(r => r.Revenue).WithMany().HasForeignKey(r => r.RevenueId);
             e.HasOne(r => r.Expense).WithMany().HasForeignKey(r => r.ExpenseId);
             e.HasIndex(r => r.EntityId);
         });
 
-        // ── FixedCharge ──
+        // -- FixedCharge --
         modelBuilder.Entity<FixedCharge>(e =>
         {
             e.Property(r => r.Montant).HasColumnType("decimal(18,2)");
             e.HasIndex(r => r.EntityId);
         });
 
-        // ── PayoutRecord ──
+        // -- PayoutRecord --
         modelBuilder.Entity<PayoutRecord>(e =>
         {
             e.Property(r => r.MontantBrut).HasColumnType("decimal(18,2)");
@@ -103,21 +107,21 @@ public class AppDbContext : DbContext
             e.HasIndex(r => r.EntityId);
         });
 
-        // ── SiretData ──
+        // -- SiretData --
         modelBuilder.Entity<SiretData>(e =>
         {
             e.HasIndex(s => s.Siret).IsUnique();
             e.HasIndex(s => s.Siren);
         });
 
-        // ── Client ──
+        // -- Client --
         modelBuilder.Entity<Client>(e =>
         {
             e.HasIndex(c => new { c.EntityId, c.Nom });
             e.HasOne(c => c.SiretData).WithMany().HasForeignKey(c => c.SiretDataId);
         });
 
-        // ── Invoice ──
+        // -- Invoice --
         modelBuilder.Entity<Invoice>(e =>
         {
             e.Property(i => i.MontantHT).HasColumnType("decimal(18,2)");
@@ -130,7 +134,7 @@ public class AppDbContext : DbContext
             e.HasOne(i => i.Revenue).WithMany().HasForeignKey(i => i.RevenueId);
         });
 
-        // ── InvoiceLine ──
+        // -- InvoiceLine --
         modelBuilder.Entity<InvoiceLine>(e =>
         {
             e.Property(l => l.Quantite).HasColumnType("decimal(18,4)");
@@ -140,7 +144,7 @@ public class AppDbContext : DbContext
             e.HasOne(l => l.Invoice).WithMany(i => i.Lignes).HasForeignKey(l => l.InvoiceId);
         });
 
-        // ── Quote ──
+        // -- Quote --
         modelBuilder.Entity<Quote>(e =>
         {
             e.Property(q => q.MontantHT).HasColumnType("decimal(18,2)");
@@ -152,14 +156,14 @@ public class AppDbContext : DbContext
             e.HasOne(q => q.Invoice).WithMany().HasForeignKey(q => q.InvoiceId);
         });
 
-        // ── CsvMappingProfile ──
+        // -- CsvMappingProfile --
         modelBuilder.Entity<CsvMappingProfile>(e =>
         {
             e.Property(p => p.ProfileType).HasConversion<string>();
             e.HasIndex(p => new { p.EntityId, p.Nom }).IsUnique();
         });
 
-        // ── QuoteLine ──
+        // -- QuoteLine --
         modelBuilder.Entity<QuoteLine>(e =>
         {
             e.Property(l => l.Quantite).HasColumnType("decimal(18,4)");
@@ -169,13 +173,13 @@ public class AppDbContext : DbContext
             e.HasOne(l => l.Quote).WithMany(q => q.Lignes).HasForeignKey(l => l.QuoteId);
         });
 
-        // ── Property ──
+        // -- Property --
         modelBuilder.Entity<Property>(e =>
         {
             e.HasIndex(p => new { p.EntityId, p.Nom }).IsUnique();
         });
 
-        // ── Relations Property (FK nullable sur tous les modèles concernés) ──
+        // -- Relations Property (FK nullable sur tous les modeles concernes) --
         modelBuilder.Entity<Client>(e2 => e2.HasOne(c => c.Property).WithMany().HasForeignKey(c => c.PropertyId));
         modelBuilder.Entity<Invoice>(e2 => e2.HasOne(i => i.Property).WithMany().HasForeignKey(i => i.PropertyId));
         modelBuilder.Entity<Quote>(e2 => e2.HasOne(q => q.Property).WithMany().HasForeignKey(q => q.PropertyId));
@@ -185,7 +189,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<PayoutRecord>(e2 => e2.HasOne(p => p.Property).WithMany().HasForeignKey(p => p.PropertyId));
         modelBuilder.Entity<FixedCharge>(e2 => e2.HasOne(f => f.Property).WithMany().HasForeignKey(f => f.PropertyId));
 
-        // ── AccountingEntry ──
+        // -- AccountingEntry --
         modelBuilder.Entity<AccountingEntry>(e =>
         {
             e.Property(a => a.Montant).HasColumnType("decimal(18,2)");
@@ -196,7 +200,7 @@ public class AppDbContext : DbContext
             e.HasOne(a => a.Expense).WithMany().HasForeignKey(a => a.ExpenseId);
         });
 
-        // ── AccountingPeriodClosing ──
+        // -- AccountingPeriodClosing --
         modelBuilder.Entity<AccountingPeriodClosing>(e =>
         {
             e.Property(c => c.TotalRecettes).HasColumnType("decimal(18,2)");
@@ -204,7 +208,51 @@ public class AppDbContext : DbContext
             e.HasIndex(c => new { c.EntityId, c.PeriodEnd }).IsUnique();
         });
 
-        // ── AuditLog ──
+        // -- ExerciseClosure --
+        modelBuilder.Entity<ExerciseClosure>(e =>
+        {
+            e.Property(c => c.StatutJuridique).HasConversion<string>();
+            e.Property(c => c.TypeActivite).HasConversion<string>();
+            e.Property(c => c.TauxCotisation).HasColumnType("decimal(5,2)");
+            e.Property(c => c.TauxCFP).HasColumnType("decimal(5,2)");
+            e.Property(c => c.TauxLiberatoire).HasColumnType("decimal(5,2)");
+            e.Property(c => c.TauxTVA).HasColumnType("decimal(5,2)");
+            e.Property(c => c.PlafondCA).HasColumnType("decimal(18,2)");
+            e.Property(c => c.TotalCA).HasColumnType("decimal(18,2)");
+            e.Property(c => c.TotalDepenses).HasColumnType("decimal(18,2)");
+            e.Property(c => c.TotalCotisations).HasColumnType("decimal(18,2)");
+            e.Property(c => c.TotalCFP).HasColumnType("decimal(18,2)");
+            e.Property(c => c.TotalVL).HasColumnType("decimal(18,2)");
+            e.Property(c => c.BeneficeNet).HasColumnType("decimal(18,2)");
+            e.HasIndex(c => c.EntityId);
+        });
+
+        // -- AnnualReport --
+        modelBuilder.Entity<AnnualReport>(e =>
+        {
+            e.Property(r => r.StatutJuridique).HasConversion<string>();
+            e.Property(r => r.ChiffreAffaires).HasColumnType("decimal(18,2)");
+            e.Property(r => r.AutresProduits).HasColumnType("decimal(18,2)");
+            e.Property(r => r.TotalProduits).HasColumnType("decimal(18,2)");
+            e.Property(r => r.AchatsChargesExternes).HasColumnType("decimal(18,2)");
+            e.Property(r => r.CotisationsSociales).HasColumnType("decimal(18,2)");
+            e.Property(r => r.CFP).HasColumnType("decimal(18,2)");
+            e.Property(r => r.VersementLiberatoire).HasColumnType("decimal(18,2)");
+            e.Property(r => r.FraisPlateforme).HasColumnType("decimal(18,2)");
+            e.Property(r => r.AutresCharges).HasColumnType("decimal(18,2)");
+            e.Property(r => r.TotalCharges).HasColumnType("decimal(18,2)");
+            e.Property(r => r.ResultatExploitation).HasColumnType("decimal(18,2)");
+            e.Property(r => r.ImpotSurBenefice).HasColumnType("decimal(18,2)");
+            e.Property(r => r.ResultatNet).HasColumnType("decimal(18,2)");
+            e.Property(r => r.TresorerieFinExercice).HasColumnType("decimal(18,2)");
+            e.Property(r => r.CreancesClients).HasColumnType("decimal(18,2)");
+            e.Property(r => r.CapitalApports).HasColumnType("decimal(18,2)");
+            e.Property(r => r.ResultatExercice).HasColumnType("decimal(18,2)");
+            e.Property(r => r.DettesUrssaf).HasColumnType("decimal(18,2)");
+            e.HasIndex(r => new { r.EntityId, r.Annee }).IsUnique();
+        });
+
+        // -- AuditLog --
         modelBuilder.Entity<AuditLog>(e =>
         {
             e.HasIndex(a => a.EntityId);

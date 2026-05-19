@@ -13,6 +13,7 @@ public class Expense : IEntityScoped
     public string Categorie { get; set; } = string.Empty;
     public string ModeReglement { get; set; } = string.Empty;
     public string? Justificatif { get; set; }
+    public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

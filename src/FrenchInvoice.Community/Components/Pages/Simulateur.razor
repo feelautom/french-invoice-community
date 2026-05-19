@@ -1,0 +1,258 @@
+@page "/simulateur"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ITenantProvider TenantProvider
+@inject AccountingService Accounting
+@inject StatusSimulatorService Simulator
+
+<PageTitle>Simulateur de statut - FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Simulateur / Comparateur de statut</MudText>
+
+@if (_entity != null)
+{
+    @* -- Donnees d'entree -- *@
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-3">Donnees de simulation</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudNumericField Value="_caAnnuel" Label="CA annuel (EUR)" Format="N0"
+                                 Immediate="true" DebounceInterval="500"
+                                 ValueChanged="@((decimal v) => { _caAnnuel = v; InvokeAsync(Simuler); })" T="decimal" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudNumericField Value="_depenses" Label="Depenses annuelles (EUR)" Format="N0"
+                                 Immediate="true" DebounceInterval="500"
+                                 ValueChanged="@((decimal v) => { _depenses = v; InvokeAsync(Simuler); })" T="decimal" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect @bind-Value="_activite" Label="Type d'activite" T="ActivityCategory">
+                    <MudSelectItem Value="ActivityCategory.BICVente">BIC - Vente</MudSelectItem>
+                    <MudSelectItem Value="ActivityCategory.BICServices">BIC - Services</MudSelectItem>
+                    <MudSelectItem Value="ActivityCategory.BNC">BNC - Liberal</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudNumericField @bind-Value="_partsFiscales" Label="Parts fiscales" Format="N1"
+                                 Min="1" Max="10" Step="0.5m" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSwitch @bind-Value="_acre" Label="Beneficie de l'ACRE" Color="Color.Primary" T="bool" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSwitch @bind-Value="_inclureProjection" Label="Inclure projections" Color="Color.Secondary" T="bool" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Simuler"
+                           StartIcon="@Icons.Material.Filled.PlayArrow">
+                    Simuler
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @* -- Projection -- *@
+    @if (_inclureProjection && _projection != null)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Projection</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudText Typo="Typo.body1">CA annuel projete : <strong>@_projection.CAProjecteAnnuel.ToString("N0") EUR</strong></MudText>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudText Typo="Typo.body1">Tendance mensuelle : <strong>@_projection.TendanceMensuelle.ToString("N0") EUR</strong></MudText>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudText Typo="Typo.body1">
+                        Confiance :
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="@(_projection.ConfidenceScore >= 0.7m ? Color.Success : _projection.ConfidenceScore >= 0.3m ? Color.Warning : Color.Error)">
+                            @((_projection.ConfidenceScore * 100).ToString("N0")) %
+                        </MudChip>
+                    </MudText>
+                </MudItem>
+            </MudGrid>
+            @if (_projection.ConfidenceScore < 0.3m)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">CA tres variable - projection peu fiable</MudAlert>
+            }
+        </MudPaper>
+    }
+
+    @* -- Tableau comparatif -- *@
+    @if (_comparison != null)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Comparaison des statuts</MudText>
+
+            <MudSimpleTable Dense="true" Hover="true" Bordered="true" Striped="true">
+                <thead>
+                    <tr>
+                        <th></th>
+                        @foreach (var r in _comparison.Resultats)
+                        {
+                            <th class="@(r.Statut == _comparison.StatutOptimal ? "mud-theme-primary" : "")">
+                                @TaxRuleEngine.GetLibelleStatut(r.Statut)
+                                @if (r.Statut == _comparison.StatutOptimal)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="ml-1">Recommande</MudChip>
+                                }
+                                @if (r.PlafondDepasse)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Class="ml-1">Plafond depasse</MudChip>
+                                }
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>CA</strong></td>
+                        @foreach (var r in _comparison.Resultats)
+                        {
+                            <td>@r.CA.ToString("N0") EUR</td>
+                        }
+                    </tr>
+                    <tr>
+                        <td><strong>Depenses deductibles</strong></td>
+                        @foreach (var r in _comparison.Resultats)
+                        {
+                            <td>@(r.Statut == LegalStatus.MicroEntreprise ? "-" : r.Depenses.ToString("N0") + " EUR")</td>
+                        }
+                    </tr>
+                    <tr>
+                        <td><strong>Cotisations sociales</strong></td>
+                        @foreach (var r in _comparison.Resultats)
+                        {
+                            <td>@r.Cotisations.ToString("N0") EUR</td>
+                        }
+                    </tr>
+                    <tr>
+                        <td><strong>CFP</strong></td>
+                        @foreach (var r in _comparison.Resultats)
+                        {
+                            <td>@r.CFP.ToString("N0") EUR</td>
+                        }
+                    </tr>
+                    <tr>
+                        <td><strong>Versement liberatoire</strong></td>
+                        @foreach (var r in _comparison.Resultats)
+                        {
+                            <td>@(r.VersementLiberatoire > 0 ? r.VersementLiberatoire.ToString("N0") + " EUR" : "-")</td>
+                        }
+                    </tr>
+                    <tr>
+                        <td><strong>Impôt sur le revenu</strong></td>
+                        @foreach (var r in _comparison.Resultats)
+                        {
+                            <td>@r.IR.ToString("N0") EUR</td>
+                        }
+                    </tr>
+                    <tr>
+                        <td><strong>Impôt sur les societes (IS)</strong></td>
+                        @foreach (var r in _comparison.Resultats)
+                        {
+                            <td>@(r.IS > 0 ? r.IS.ToString("N0") + " EUR" : "-")</td>
+                        }
+                    </tr>
+                    <tr class="mud-theme-dark">
+                        <td><strong>Total charges</strong></td>
+                        @foreach (var r in _comparison.Resultats)
+                        {
+                            <td><strong>@r.TotalCharges.ToString("N0") EUR</strong></td>
+                        }
+                    </tr>
+                    <tr style="background-color: var(--mud-palette-background-grey);">
+                        <td><strong>Revenu net</strong></td>
+                        @foreach (var r in _comparison.Resultats)
+                        {
+                            <td style="@(r.Statut == _comparison.StatutOptimal ? "color: var(--mud-palette-success); font-weight: bold; font-size: 1.1em;" : "font-weight: bold;")">
+                                @r.RevenuNet.ToString("N0") EUR
+                            </td>
+                        }
+                    </tr>
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+
+        @* -- Alertes et recommandations -- *@
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Recommandation</MudText>
+            <MudAlert Severity="Severity.Info" Dense="false">@_comparison.Explication</MudAlert>
+
+            @foreach (var r in _comparison.Resultats)
+            {
+                @foreach (var alerte in r.Alertes)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                        <strong>@TaxRuleEngine.GetLibelleStatut(r.Statut)</strong> : @alerte
+                    </MudAlert>
+                }
+            }
+        </MudPaper>
+    }
+}
+else
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+
+@code {
+    private Entity? _entity;
+    private decimal _caAnnuel;
+    private decimal _depenses;
+    private ActivityCategory _activite;
+    private decimal _partsFiscales = 1;
+    private bool _acre;
+    private bool _inclureProjection;
+
+    private StatusComparison? _comparison;
+    private ProjectionResult? _projection;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+        using var db = DbFactory.CreateDbContext();
+        _entity = await db.Entities.FirstOrDefaultAsync(e => e.Id == TenantProvider.EntityId);
+
+        if (_entity != null)
+        {
+            _activite = _entity.TypeActivite;
+            _partsFiscales = _entity.NombrePartsFiscales;
+            _acre = _entity.BeneficieACRE;
+
+            var year = DateTime.Today.Year;
+            _caAnnuel = await Accounting.GetCAForYearAsync(year);
+
+            var start = new DateTime(year, 1, 1);
+            var end = new DateTime(year, 12, 31);
+            _depenses = await Accounting.GetExpensesForPeriodAsync(start, end);
+
+            await Simuler();
+        }
+    }
+
+    private async Task Simuler()
+    {
+        if (_entity == null) return;
+
+        _comparison = Simulator.Compare(_caAnnuel, _depenses, _activite, _partsFiscales, _acre, _entity.DateDebutActivite);
+
+        if (_inclureProjection)
+        {
+            var historique = await Accounting.GetCAMensuelHistoriqueAsync(_entity.Id, 6);
+            var caMensuels = historique.Select(h => h.CA).ToList();
+            var moisRestants = 12 - DateTime.Today.Month;
+            if (moisRestants > 0 && caMensuels.Any())
+            {
+                _projection = Simulator.Projeter(caMensuels, moisRestants);
+            }
+        }
+        else
+        {
+            _projection = null;
+        }
+
+        StateHasChanged();
+    }
+}

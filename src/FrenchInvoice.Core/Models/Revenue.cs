@@ -13,7 +13,9 @@ public class Revenue : IEntityScoped
     public string ModePaiement { get; set; } = string.Empty;
     public ActivityCategory Categorie { get; set; } = ActivityCategory.BNC;
     public string? ReferenceFacture { get; set; }
+    public string? PaymentReference { get; set; }
     public string? JustificatifFileName { get; set; }
+    public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

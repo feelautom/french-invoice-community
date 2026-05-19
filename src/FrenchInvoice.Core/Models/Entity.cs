@@ -18,6 +18,10 @@ public class Entity
     public int Id { get; set; }
     public string Nom { get; set; } = "";
 
+    // Statut juridique
+    public LegalStatus StatutJuridique { get; set; } = LegalStatus.MicroEntreprise;
+    public DateTime? DateChangementStatut { get; set; }
+
     // Activité & Fiscalité
     public ActivityCategory TypeActivite { get; set; } = ActivityCategory.BNC;
     public DeclarationPeriodicity PeriodiciteDeclaration { get; set; } = DeclarationPeriodicity.Mensuelle;
@@ -51,6 +55,9 @@ public class Entity
     public bool VersementLiberatoire { get; set; }
     public decimal TauxLiberatoire { get; set; } = 2.2m;
     public decimal FraisVariables { get; set; }
+    public decimal TauxCotisation { get; set; } = 25.6m;
+    public decimal TauxCFP { get; set; } = 0.2m;
+    public decimal NombrePartsFiscales { get; set; } = 1m;
     public bool BeneficieACRE { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -1,0 +1,306 @@
+@page "/impot"
+@inject AccountingService Accounting
+@inject IncomeTaxService TaxService
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ITenantProvider TenantProvider
+@inject ISnackbar Snackbar
+
+<PageTitle>Impôt sur le revenu — FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">
+    @if (_settings?.StatutJuridique == LegalStatus.SASU)
+    {
+        @:Simulation IS / IR
+    }
+    else
+    {
+        @:Simulation impôt sur le revenu
+    }
+</MudText>
+
+@if (_settings?.StatutJuridique == LegalStatus.SASU && _isResult != null)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-3">Impôt sur les sociétés (IS)</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Primary">Bénéfice imposable</MudText>
+                    <MudText Typo="Typo.h4">@_isResult.Benefice.ToString("N2") &euro;</MudText>
+                    <MudText Typo="Typo.caption">CA - Dépenses - Charges sociales</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.subtitle2" Style="color: #d32f2f;">IS estimé</MudText>
+                    <MudText Typo="Typo.h4" Style="color: #d32f2f;">@_isResult.TotalIS.ToString("N2") &euro;</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Success">Résultat net après IS</MudText>
+                    <MudText Typo="Typo.h4" Color="Color.Success">@((_isResult.Benefice - _isResult.TotalIS).ToString("N2")) &euro;</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+        <MudSimpleTable Dense="true" Hover="true" Striped="true" Class="mt-3" Style="max-width: 500px;">
+            <thead>
+                <tr><th>Tranche IS</th><th>Taux</th><th style="text-align:right">Montant</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Jusqu'à 42 500 &euro;</td>
+                    <td>@_isResult.TauxReduit%</td>
+                    <td style="text-align:right">@_isResult.MontantTauxReduit.ToString("N2") &euro;</td>
+                </tr>
+                <tr>
+                    <td>Au-delà de 42 500 &euro;</td>
+                    <td>@_isResult.TauxNormal%</td>
+                    <td style="text-align:right">@_isResult.MontantTauxNormal.ToString("N2") &euro;</td>
+                </tr>
+                <tr style="font-weight: bold">
+                    <td colspan="2">Total IS</td>
+                    <td style="text-align:right">@_isResult.TotalIS.ToString("N2") &euro;</td>
+                </tr>
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+    <MudText Typo="Typo.h6" Class="mb-3 mt-4">IR sur rémunération du président</MudText>
+}
+
+@if (_result != null)
+{
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.subtitle2" Color="Color.Primary">Chiffre d'affaires</MudText>
+                <MudText Typo="Typo.h4">@_result.CA.ToString("N2") &euro;</MudText>
+                <MudText Typo="Typo.caption">Année @_year</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.subtitle2" Color="Color.Info">Revenu imposable</MudText>
+                <MudText Typo="Typo.h4">@_result.RevenuImposable.ToString("N2") &euro;</MudText>
+                <MudText Typo="Typo.caption">Après abattement @_result.AbattementPourcent% (-@_result.Abattement.ToString("N2") &euro;)</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.subtitle2" Style="color: #d32f2f;">Impôt estimé</MudText>
+                <MudText Typo="Typo.h4" Style="color: #d32f2f;">@_result.ImpotNet.ToString("N0") &euro;</MudText>
+                <MudText Typo="Typo.caption">Taux moyen : @_result.TauxMoyen% — Taux marginal : @_result.TauxMarginal%</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.subtitle2" Color="Color.Success">Revenu net après IR</MudText>
+                <MudText Typo="Typo.h4" Color="Color.Success">@((_result.RevenuImposable - _result.ImpotNet).ToString("N0")) &euro;</MudText>
+                <MudText Typo="Typo.caption">@_result.NombreParts part(s) fiscale(s)</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @if (_settings?.VersementLiberatoire == true)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            <strong>Versement libératoire activé</strong> — Vous payez @_result.VersementLiberatoire.ToString("N2") &euro;
+            (@_settings.TauxLiberatoire% du CA) au lieu de @_result.ImpotNet.ToString("N0") &euro; au barème.
+            @if (_result.EconomieVL > 0)
+            {
+                <span>Économie : <strong>@_result.EconomieVL.ToString("N0") &euro;</strong></span>
+            }
+            else if (_result.EconomieVL < 0)
+            {
+                <span>Surcoût : <strong>@((-_result.EconomieVL).ToString("N0")) &euro;</strong> (le barème serait plus avantageux)</span>
+            }
+        </MudAlert>
+    }
+
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Paramètres</MudText>
+                <MudNumericField @bind-Value="_year" Label="Année" Min="2020" Max="2030"
+                                 Immediate="false" OnBlur="Recalculer" Class="mb-3" />
+                <MudNumericField @bind-Value="_simulationCA" Label="CA simulé (€)" Format="N2"
+                                 Immediate="false" OnBlur="Recalculer" Class="mb-3" />
+                <MudNumericField @bind-Value="_parts" Label="Parts fiscales" Format="N1"
+                                 Min="1" Max="10" Step="0.5m"
+                                 Immediate="false" OnBlur="OnPartsChanged" Class="mb-3" />
+                <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="ResetCA"
+                           StartIcon="@Icons.Material.Filled.Refresh" Size="Size.Small">
+                    Revenir au CA réel
+                </MudButton>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="8">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Répartition par tranche</MudText>
+                <MudSimpleTable Dense="true" Hover="true" Striped="true">
+                    <thead>
+                        <tr>
+                            <th>Tranche</th>
+                            <th>Taux</th>
+                            <th style="text-align:right">Montant imposable</th>
+                            <th style="text-align:right">Impôt</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in _result.Tranches.Where(t => t.Plafond > t.Plancher))
+                        {
+                            <tr style="@(t.MontantImposable > 0 ? "" : "opacity: 0.4")">
+                                <td>@t.Plancher.ToString("N0") — @t.Plafond.ToString("N0") &euro;</td>
+                                <td>@t.Taux.ToString("N0")%</td>
+                                <td style="text-align:right">@t.MontantImposable.ToString("N2") &euro;</td>
+                                <td style="text-align:right">@t.Impot.ToString("N2") &euro;</td>
+                            </tr>
+                        }
+                        <tr style="font-weight: bold">
+                            <td colspan="2">Total (x @_result.NombreParts parts)</td>
+                            <td style="text-align:right">@_result.RevenuImposable.ToString("N2") &euro;</td>
+                            <td style="text-align:right">@_result.ImpotNet.ToString("N0") &euro;</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid>
+        <MudItem xs="12" sm="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Visualisation des tranches</MudText>
+                <MudChart ChartType="ChartType.Bar"
+                          ChartSeries="@_barSeries"
+                          XAxisLabels="@_barLabels"
+                          Height="300px" Width="100%" />
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Répartition du CA</MudText>
+                <MudChart ChartType="ChartType.Donut"
+                          InputData="@_donutData"
+                          InputLabels="@_donutLabels"
+                          Height="300px" Width="100%" />
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+else
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+
+@code {
+    private Entity? _settings;
+    private IncomeTaxResult? _result;
+    private ISResult? _isResult;
+    private int _year = DateTime.Today.Year;
+    private decimal _simulationCA;
+    private decimal _realCA;
+    private decimal _parts = 1m;
+    private decimal _depenses;
+
+    // Charts
+    private List<ChartSeries> _barSeries = new();
+    private string[] _barLabels = Array.Empty<string>();
+    private double[] _donutData = Array.Empty<double>();
+    private string[] _donutLabels = Array.Empty<string>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+        _settings = await Accounting.GetEntityAsync();
+        _parts = _settings.NombrePartsFiscales;
+        _realCA = await Accounting.GetCAForYearAsync(_year);
+        _simulationCA = _realCA;
+        _depenses = await Accounting.GetExpensesForPeriodAsync(new DateTime(_year, 1, 1), new DateTime(_year, 12, 31));
+        Calculate();
+    }
+
+    private void Calculate()
+    {
+        if (_settings == null) return;
+
+        _result = TaxService.Calculer(_simulationCA, _settings.TypeActivite,
+            _parts, _settings.VersementLiberatoire, _settings.TauxLiberatoire,
+            _settings.StatutJuridique, _depenses);
+
+        if (_settings.StatutJuridique == LegalStatus.SASU)
+        {
+            var benefice = Math.Max(0, _simulationCA - _depenses);
+            _isResult = TaxService.CalculerIS(benefice);
+        }
+        else
+        {
+            _isResult = null;
+        }
+
+        UpdateCharts();
+    }
+
+    private void UpdateCharts()
+    {
+        if (_result == null) return;
+
+        var activeTranches = _result.Tranches.Where(t => t.Plafond > t.Plancher).ToList();
+        _barLabels = activeTranches.Select(t => $"{t.Taux:N0}%").ToArray();
+        _barSeries = new List<ChartSeries>
+        {
+            new() { Name = "Impôt par tranche", Data = activeTranches.Select(t => (double)t.Impot).ToArray() }
+        };
+
+        var impot = (double)_result.ImpotNet;
+        var cotisationsEtCFP = (double)(_simulationCA * (_settings!.TauxCotisation + _settings.TauxCFP) / 100m);
+        var vl = (double)_result.VersementLiberatoire;
+        var net = (double)(_result.CA - _result.ImpotNet - (decimal)cotisationsEtCFP - (decimal)vl);
+        if (net < 0) net = 0;
+
+        var data = new List<double>();
+        var labels = new List<string>();
+
+        if (net > 0) { data.Add(net); labels.Add($"Net : {net:N0} €"); }
+        if (impot > 0) { data.Add(impot); labels.Add($"IR : {impot:N0} €"); }
+        if (cotisationsEtCFP > 0) { data.Add(cotisationsEtCFP); labels.Add($"Cotisations : {cotisationsEtCFP:N0} €"); }
+        if (vl > 0) { data.Add(vl); labels.Add($"VL : {vl:N0} €"); }
+
+        _donutData = data.ToArray();
+        _donutLabels = labels.ToArray();
+    }
+
+    private async Task Recalculer()
+    {
+        _realCA = await Accounting.GetCAForYearAsync(_year);
+        _depenses = await Accounting.GetExpensesForPeriodAsync(new DateTime(_year, 1, 1), new DateTime(_year, 12, 31));
+        if (_simulationCA == 0) _simulationCA = _realCA;
+        Calculate();
+    }
+
+    private async Task ResetCA()
+    {
+        _realCA = await Accounting.GetCAForYearAsync(_year);
+        _depenses = await Accounting.GetExpensesForPeriodAsync(new DateTime(_year, 1, 1), new DateTime(_year, 12, 31));
+        _simulationCA = _realCA;
+        Calculate();
+    }
+
+    private async Task OnPartsChanged()
+    {
+        if (_settings == null || _parts < 1) return;
+        _settings.NombrePartsFiscales = _parts;
+
+        using var db = DbFactory.CreateDbContext();
+        var entity = await db.Entities.FindAsync(_settings.Id);
+        if (entity != null)
+        {
+            entity.NombrePartsFiscales = _parts;
+            entity.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        Calculate();
+        Snackbar.Add("Parts fiscales sauvegardées", Severity.Success);
+    }
+}

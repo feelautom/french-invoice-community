@@ -1,0 +1,331 @@
+@page "/bilans"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ITenantProvider TenantProvider
+@inject AnnualReportService ReportService
+@inject AnnualReportPdfService PdfService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Bilans annuels - FrenchInvoice</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Bilans annuels</MudText>
+
+@if (_entity != null)
+{
+    @if (_entity.StatutJuridique == LegalStatus.MicroEntreprise)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            Les micro-entreprises ne sont pas tenues de produire un bilan.
+            Vous pouvez neanmoins en generer un a titre informatif.
+        </MudAlert>
+    }
+
+    @* -- Generer un bilan -- *@
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-3">Generer un bilan</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_selectedYear" Label="Annee" Min="2020" Max="@DateTime.Today.Year" T="int" />
+            </MudItem>
+            <MudItem xs="12" sm="4" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GenererBilan"
+                           StartIcon="@Icons.Material.Filled.Add" Disabled="_generating">
+                    @(_generating ? "Generation..." : "Generer le bilan")
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @* -- Bilan selectionne -- *@
+    @if (_currentReport != null)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudGrid>
+                <MudItem xs="12" sm="8">
+                    <MudText Typo="Typo.h6">
+                        Bilan @_currentReport.Annee
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="ml-2">
+                            @TaxRuleEngine.GetLibelleStatut(_currentReport.StatutJuridique)
+                        </MudChip>
+                    </MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Genere le @_currentReport.GeneratedAt.ToString("dd/MM/yyyy HH:mm")
+                    </MudText>
+                </MudItem>
+                <MudItem xs="12" sm="4" Class="d-flex align-end justify-end gap-2">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="RegenererBilan"
+                               StartIcon="@Icons.Material.Filled.Refresh" Size="Size.Small">
+                        Regenerer
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="TelechargerPdf"
+                               StartIcon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small">
+                        PDF
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @* Compte de resultat *@
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Compte de resultat</MudText>
+            <MudSimpleTable Dense="true" Hover="true" Bordered="true">
+                <thead>
+                    <tr>
+                        <th>Libelle</th>
+                        <th style="text-align:right;">Montant (EUR)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="mud-theme-primary" style="color:white;">
+                        <td colspan="2"><strong>PRODUITS</strong></td>
+                    </tr>
+                    <tr>
+                        <td>Chiffre d'affaires</td>
+                        <td style="text-align:right;">@_currentReport.ChiffreAffaires.ToString("N2")</td>
+                    </tr>
+                    @if (_currentReport.AutresProduits != 0)
+                    {
+                        <tr>
+                            <td>Autres produits</td>
+                            <td style="text-align:right;">@_currentReport.AutresProduits.ToString("N2")</td>
+                        </tr>
+                    }
+                    <tr style="background-color: var(--mud-palette-background-grey);">
+                        <td><strong>Total produits</strong></td>
+                        <td style="text-align:right;"><strong>@_currentReport.TotalProduits.ToString("N2")</strong></td>
+                    </tr>
+
+                    <tr class="mud-theme-primary" style="color:white;">
+                        <td colspan="2"><strong>CHARGES</strong></td>
+                    </tr>
+                    <tr>
+                        <td>Achats et charges externes</td>
+                        <td style="text-align:right;">@_currentReport.AchatsChargesExternes.ToString("N2")</td>
+                    </tr>
+                    <tr>
+                        <td>Cotisations sociales</td>
+                        <td style="text-align:right;">@_currentReport.CotisationsSociales.ToString("N2")</td>
+                    </tr>
+                    <tr>
+                        <td>CFP</td>
+                        <td style="text-align:right;">@_currentReport.CFP.ToString("N2")</td>
+                    </tr>
+                    @if (_currentReport.VersementLiberatoire > 0)
+                    {
+                        <tr>
+                            <td>Versement liberatoire</td>
+                            <td style="text-align:right;">@_currentReport.VersementLiberatoire.ToString("N2")</td>
+                        </tr>
+                    }
+                    @if (_currentReport.FraisPlateforme > 0)
+                    {
+                        <tr>
+                            <td>Frais de plateforme</td>
+                            <td style="text-align:right;">@_currentReport.FraisPlateforme.ToString("N2")</td>
+                        </tr>
+                    }
+                    @if (_currentReport.AutresCharges > 0)
+                    {
+                        <tr>
+                            <td>Autres charges (frais variables)</td>
+                            <td style="text-align:right;">@_currentReport.AutresCharges.ToString("N2")</td>
+                        </tr>
+                    }
+                    <tr style="background-color: var(--mud-palette-background-grey);">
+                        <td><strong>Total charges</strong></td>
+                        <td style="text-align:right;"><strong>@_currentReport.TotalCharges.ToString("N2")</strong></td>
+                    </tr>
+
+                    <tr>
+                        <td><strong>Resultat d'exploitation</strong></td>
+                        <td style="text-align:right;"><strong>@_currentReport.ResultatExploitation.ToString("N2")</strong></td>
+                    </tr>
+                    @if (_currentReport.ImpotSurBenefice > 0)
+                    {
+                        <tr>
+                            <td>Impot sur les societes (IS)</td>
+                            <td style="text-align:right;">-@_currentReport.ImpotSurBenefice.ToString("N2")</td>
+                        </tr>
+                    }
+                    <tr style="@(_currentReport.ResultatNet >= 0 ? "color: var(--mud-palette-success);" : "color: var(--mud-palette-error);") font-weight: bold; font-size: 1.1em;">
+                        <td><strong>RESULTAT NET</strong></td>
+                        <td style="text-align:right;"><strong>@_currentReport.ResultatNet.ToString("N2")</strong></td>
+                    </tr>
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+
+        @* Bilan simplifie *@
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Bilan simplifie</MudText>
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudSimpleTable Dense="true" Hover="true" Bordered="true">
+                        <thead>
+                            <tr><th colspan="2" style="text-align:center;"><strong>ACTIF</strong></th></tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Tresorerie</td>
+                                <td style="text-align:right;">@_currentReport.TresorerieFinExercice.ToString("N2")</td>
+                            </tr>
+                            <tr>
+                                <td>Creances clients</td>
+                                <td style="text-align:right;">@_currentReport.CreancesClients.ToString("N2")</td>
+                            </tr>
+                            <tr style="background-color: var(--mud-palette-background-grey);">
+                                <td><strong>Total actif</strong></td>
+                                <td style="text-align:right;"><strong>@((_currentReport.TresorerieFinExercice + _currentReport.CreancesClients).ToString("N2"))</strong></td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSimpleTable Dense="true" Hover="true" Bordered="true">
+                        <thead>
+                            <tr><th colspan="2" style="text-align:center;"><strong>PASSIF</strong></th></tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Apports personnels</td>
+                                <td style="text-align:right;">@_currentReport.CapitalApports.ToString("N2")</td>
+                            </tr>
+                            <tr>
+                                <td>Resultat exercice</td>
+                                <td style="text-align:right;">@_currentReport.ResultatExercice.ToString("N2")</td>
+                            </tr>
+                            <tr>
+                                <td>Dettes URSSAF</td>
+                                <td style="text-align:right;">@_currentReport.DettesUrssaf.ToString("N2")</td>
+                            </tr>
+                            <tr style="background-color: var(--mud-palette-background-grey);">
+                                <td><strong>Total passif</strong></td>
+                                <td style="text-align:right;"><strong>@((_currentReport.CapitalApports + _currentReport.ResultatExercice + _currentReport.DettesUrssaf).ToString("N2"))</strong></td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+
+    @* -- Historique des bilans -- *@
+    @if (_reports.Any())
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Historique</MudText>
+            <MudSimpleTable Dense="true" Hover="true" Bordered="true">
+                <thead>
+                    <tr>
+                        <th>Annee</th>
+                        <th>Statut</th>
+                        <th style="text-align:right;">CA</th>
+                        <th style="text-align:right;">Resultat net</th>
+                        <th>Genere le</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in _reports)
+                    {
+                        <tr>
+                            <td>@r.Annee</td>
+                            <td>@TaxRuleEngine.GetLibelleStatut(r.StatutJuridique)</td>
+                            <td style="text-align:right;">@r.ChiffreAffaires.ToString("N0") EUR</td>
+                            <td style="text-align:right; @(r.ResultatNet >= 0 ? "color: var(--mud-palette-success);" : "color: var(--mud-palette-error);")">
+                                @r.ResultatNet.ToString("N0") EUR
+                            </td>
+                            <td>@r.GeneratedAt.ToString("dd/MM/yyyy")</td>
+                            <td>
+                                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                                               OnClick="@(() => VoirBilan(r))" TooltipText="Voir" />
+                                @if (!string.IsNullOrEmpty(r.PdfPath))
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small"
+                                                   OnClick="@(() => TelechargerPdfReport(r))" TooltipText="PDF" />
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+    }
+}
+else
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+
+@code {
+    private Entity? _entity;
+    private int _selectedYear = DateTime.Today.Year;
+    private bool _generating;
+    private AnnualReport? _currentReport;
+    private List<AnnualReport> _reports = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TenantProvider.InitializeAsync();
+        using var db = DbFactory.CreateDbContext();
+        _entity = await db.Entities.FirstOrDefaultAsync(e => e.Id == TenantProvider.EntityId);
+        await LoadReports();
+    }
+
+    private async Task LoadReports()
+    {
+        _reports = await ReportService.GetReportsAsync(TenantProvider.EntityId);
+        _currentReport = _reports.FirstOrDefault(r => r.Annee == _selectedYear);
+    }
+
+    private async Task GenererBilan()
+    {
+        _generating = true;
+        try
+        {
+            _currentReport = await ReportService.GenerateAsync(TenantProvider.EntityId, _selectedYear);
+
+            if (_entity != null)
+            {
+                _currentReport.PdfPath = PdfService.GenererPdf(_currentReport, _entity);
+                using var db = DbFactory.CreateDbContext();
+                db.AnnualReports.Update(_currentReport);
+                await db.SaveChangesAsync();
+            }
+
+            await LoadReports();
+            Snackbar.Add($"Bilan {_selectedYear} genere", MudBlazor.Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erreur : {ex.Message}", MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            _generating = false;
+        }
+    }
+
+    private async Task RegenererBilan()
+    {
+        await GenererBilan();
+    }
+
+    private void TelechargerPdf()
+    {
+        if (_currentReport != null)
+            TelechargerPdfReport(_currentReport);
+    }
+
+    private void TelechargerPdfReport(AnnualReport report)
+    {
+        if (!string.IsNullOrEmpty(report.PdfPath))
+            Navigation.NavigateTo($"/download/bilans/{report.Id}/pdf", forceLoad: true);
+    }
+
+    private void VoirBilan(AnnualReport report)
+    {
+        _selectedYear = report.Annee;
+        _currentReport = report;
+    }
+}

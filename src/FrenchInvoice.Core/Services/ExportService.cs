@@ -114,6 +114,13 @@ public class ExportService
                     archive.CreateEntryFromFile(filePath, $"justificatifs/declarations/{decl.JustificatifFileName}", CompressionLevel.Optimal);
             }
 
+            // Bilans annuels PDF
+            var annualReports = await db.AnnualReports.Where(r => r.EntityId == entityId).ToListAsync();
+            foreach (var report in annualReports.Where(r => !string.IsNullOrEmpty(r.PdfPath) && File.Exists(r.PdfPath!)))
+            {
+                archive.CreateEntryFromFile(report.PdfPath!, $"bilans/{Path.GetFileName(report.PdfPath)}", CompressionLevel.Optimal);
+            }
+
             var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(exportData, JsonOptions);
             var hash = SHA256.HashData(jsonBytes);
             var metadata = new ExportMetadata

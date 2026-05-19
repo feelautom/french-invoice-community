@@ -18,7 +18,8 @@ var dbPath = Path.Combine(builder.Environment.ContentRootPath, "Data", "frenchin
 Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
 builder.Services.AddDbContextFactory<AppDbContext>(options =>
-    options.UseSqlite($"Data Source={dbPath}"));
+    options.UseSqlite($"Data Source={dbPath}")
+           .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
 // Community edition : pas d'Infisical, pas de SoftLic, pas de PaymentPlatformService
 builder.Services.AddSingleton<IEditionProvider>(new EditionProvider("Community"));
@@ -27,6 +28,10 @@ builder.Services.AddSingleton<ISecretProvider, NullSecretProvider>();
 builder.Services.AddScoped<ITenantProvider, TenantProvider>();
 builder.Services.AddScoped<AccountingService>();
 builder.Services.AddScoped<DeclarationService>();
+builder.Services.AddSingleton<IncomeTaxService>();
+builder.Services.AddScoped<StatusSimulatorService>();
+builder.Services.AddScoped<AnnualReportService>();
+builder.Services.AddScoped<AnnualReportPdfService>();
 builder.Services.AddSingleton<BankImportService>();
 builder.Services.AddScoped<AlertService>();
 builder.Services.AddScoped<PdfGenerationService>();
@@ -139,6 +144,16 @@ app.MapGet("/download/quotes/{id:int}/pdf", async (int id, IDbContextFactory<App
         return Results.NotFound();
     var bytes = await File.ReadAllBytesAsync(quote.CheminPdf);
     return Results.File(bytes, "application/pdf", Path.GetFileName(quote.CheminPdf));
+});
+
+app.MapGet("/download/bilans/{id:int}/pdf", async (int id, IDbContextFactory<AppDbContext> dbFactory) =>
+{
+    using var db = dbFactory.CreateDbContext();
+    var report = await db.AnnualReports.FirstOrDefaultAsync(r => r.Id == id);
+    if (report == null || string.IsNullOrEmpty(report.PdfPath) || !File.Exists(report.PdfPath))
+        return Results.NotFound();
+    var bytes = await File.ReadAllBytesAsync(report.PdfPath);
+    return Results.File(bytes, "application/pdf", Path.GetFileName(report.PdfPath));
 });
 
 // Health check

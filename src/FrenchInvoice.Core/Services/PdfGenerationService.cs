@@ -318,8 +318,9 @@ public class PdfGenerationService
             col.Item().PaddingTop(20).Column(legalCol =>
             {
                 legalCol.Item().Text("Mentions legales").Bold().FontSize(9);
-                if (settings.FranchiseTVA)
-                    legalCol.Item().Text("TVA non applicable, art. 293B du CGI").FontSize(8);
+                var mentionsStatut = TaxRuleEngine.GetMentionsLegales(settings.StatutJuridique, settings);
+                if (!string.IsNullOrEmpty(mentionsStatut))
+                    legalCol.Item().Text(mentionsStatut).FontSize(8);
                 legalCol.Item().Text("Penalites de retard : 3 fois le taux d'interet legal").FontSize(8);
                 legalCol.Item().Text("Indemnite forfaitaire pour frais de recouvrement : 40 \u20ac").FontSize(8);
                 if (!string.IsNullOrEmpty(invoice.MentionsLegales))

@@ -18,15 +18,25 @@
 
             <MudGrid>
                 <MudItem xs="12" sm="6">
-                    <MudSelect @bind-Value="_settings.TypeActivite" Label="Type d'activité">
-                        <MudSelectItem Value="ActivityCategory.BICVente">BIC — Vente de marchandises (12.3 %)</MudSelectItem>
-                        <MudSelectItem Value="ActivityCategory.BICServices">BIC — Prestations de services (21.2 %)</MudSelectItem>
-                        <MudSelectItem Value="ActivityCategory.BNC">BNC — Libéral (21.1 %)</MudSelectItem>
+                    <MudSelect Value="_settings.StatutJuridique" Label="Statut juridique"
+                               T="LegalStatus" ValueChanged="OnStatutChanged">
+                        <MudSelectItem Value="LegalStatus.MicroEntreprise">Micro-entreprise</MudSelectItem>
+                        <MudSelectItem Value="LegalStatus.EIClassique">EI classique (réel)</MudSelectItem>
+                        <MudSelectItem Value="LegalStatus.EURL">EURL (IR)</MudSelectItem>
+                        <MudSelectItem Value="LegalStatus.SASU">SASU (IS)</MudSelectItem>
                     </MudSelect>
                 </MudItem>
 
                 <MudItem xs="12" sm="6">
-                    <MudSelect @bind-Value="_settings.PeriodiciteDeclaration" Label="Périodicité de déclaration">
+                    <MudSelect @bind-Value="_settings.TypeActivite" Label="Type d'activité">
+                        <MudSelectItem Value="ActivityCategory.BICVente">BIC — Vente de marchandises</MudSelectItem>
+                        <MudSelectItem Value="ActivityCategory.BICServices">BIC — Prestations de services</MudSelectItem>
+                        <MudSelectItem Value="ActivityCategory.BNC">BNC — Libéral</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_settings.PeriodiciteDeclaration" Label="Périodicité de déclaration" Disabled="_settings.StatutJuridique != LegalStatus.MicroEntreprise">
                         <MudSelectItem Value="DeclarationPeriodicity.Mensuelle">Mensuelle</MudSelectItem>
                         <MudSelectItem Value="DeclarationPeriodicity.Trimestrielle">Trimestrielle</MudSelectItem>
                     </MudSelect>
@@ -36,12 +46,15 @@
                     <MudDatePicker @bind-Date="_dateDebut" Label="Date de début d'activité" DateFormat="dd/MM/yyyy" />
                 </MudItem>
 
-                <MudItem xs="12" sm="6">
-                    <MudNumericField @bind-Value="_settings.PlafondCA" Label="Plafond CA (€)" Format="N0" />
-                </MudItem>
+                @if (_settings.StatutJuridique == LegalStatus.MicroEntreprise)
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="_settings.PlafondCA" Label="Plafond CA (€)" Format="N0" />
+                    </MudItem>
+                }
 
                 <MudItem xs="12" sm="6">
-                    <MudSwitch @bind-Value="_settings.FranchiseTVA" Label="Franchise en base de TVA" Color="Color.Primary" />
+                    <MudSwitch @bind-Value="_settings.FranchiseTVA" Label="Franchise en base de TVA" Color="Color.Primary" Disabled="_settings.StatutJuridique != LegalStatus.MicroEntreprise" />
                 </MudItem>
 
                 <MudItem xs="12" sm="6">
@@ -50,24 +63,61 @@
                 </MudItem>
 
                 <MudItem xs="12" sm="6">
-                    <MudTextField Value="@TauxURSSAF" Label="Taux URSSAF (%)" ReadOnly="true" />
+                    <MudNumericField @bind-Value="_settings.TauxCotisation" Label="@(_settings.StatutJuridique == LegalStatus.SASU ? "Taux charges sociales (%)" : "Taux cotisations URSSAF (%)")" Format="N1" />
                 </MudItem>
 
                 <MudItem xs="12" sm="6">
-                    <MudSwitch @bind-Value="_settings.VersementLiberatoire" Label="Versement libératoire" Color="Color.Primary" />
+                    <MudNumericField @bind-Value="_settings.TauxCFP" Label="Taux CFP (%)" Format="N1" />
                 </MudItem>
 
-                <MudItem xs="12" sm="6">
-                    <MudNumericField @bind-Value="_settings.TauxLiberatoire" Label="Taux libératoire (%)" Format="N1"
-                                     Disabled="!_settings.VersementLiberatoire" />
-                </MudItem>
+                @if (_settings.StatutJuridique == LegalStatus.MicroEntreprise)
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudSwitch @bind-Value="_settings.BeneficieACRE" Label="Bénéficie de l'ACRE" Color="Color.Primary" />
+                    </MudItem>
+
+                    @if (_settings.BeneficieACRE)
+                    {
+                        <MudItem xs="12" sm="6">
+                            <MudTextField Value="@TauxEffectif" Label="Taux effectif avec ACRE (%)" ReadOnly="true" />
+                        </MudItem>
+                    }
+
+                    <MudItem xs="12" sm="6">
+                        <MudSwitch @bind-Value="_settings.VersementLiberatoire" Label="Versement libératoire" Color="Color.Primary" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="_settings.TauxLiberatoire" Label="Taux libératoire (%)" Format="N1"
+                                         Disabled="!_settings.VersementLiberatoire" />
+                    </MudItem>
+                }
+
+                @if (_settings.StatutJuridique != LegalStatus.MicroEntreprise)
+                {
+                    <MudItem xs="12">
+                        <MudAlert Severity="Severity.Info" Dense="true" NoIcon="false">
+                            @switch (_settings.StatutJuridique)
+                            {
+                                case LegalStatus.EIClassique:
+                                    <span>EI classique : cotisations calculées sur le bénéfice (CA - dépenses). Assujetti TVA par défaut.</span>
+                                    break;
+                                case LegalStatus.EURL:
+                                    <span>EURL (IR) : cotisations calculées sur la rémunération/bénéfice. Assujetti TVA.</span>
+                                    break;
+                                case LegalStatus.SASU:
+                                    <span>SASU (IS) : charges sociales sur le salaire brut. Soumise à l'impôt sur les sociétés. Bulletins de paie non gérés (v2).</span>
+                                    break;
+                            }
+                        </MudAlert>
+                    </MudItem>
+                }
 
                 <MudItem xs="12" sm="6">
                     <MudNumericField @bind-Value="_settings.FraisVariables" Label="Frais variables (%)" Format="N1" />
                 </MudItem>
-
                 <MudItem xs="12" sm="6">
-                    <MudSwitch @bind-Value="_settings.BeneficieACRE" Label="Bénéficie de l'ACRE" Color="Color.Primary" />
+                    <MudNumericField @bind-Value="_settings.NombrePartsFiscales" Label="Parts fiscales (IR)" Format="N1" Min="1" Max="10" Step="0.5m" />
                 </MudItem>
             </MudGrid>
         </MudPaper>
@@ -189,13 +239,18 @@
     private string? _iban;
     private string? _bic;
 
-    private string TauxURSSAF => _settings?.TypeActivite switch
+    private string TauxEffectif
     {
-        ActivityCategory.BICVente => "12.3",
-        ActivityCategory.BICServices => "21.2",
-        ActivityCategory.BNC => "21.1",
-        _ => "—"
-    };
+        get
+        {
+            if (_settings == null) return "—";
+            var taux = _settings.TauxCotisation;
+            if (_settings.BeneficieACRE && _settings.DateDebutActivite.HasValue
+                && DateTime.Today < _settings.DateDebutActivite.Value.AddYears(1))
+                taux /= 2m;
+            return taux.ToString("N1");
+        }
+    }
 
     private decimal TotalCharges => _charges.Where(c => c.Active).Sum(c => c.Montant);
 
@@ -217,6 +272,32 @@
         {
             _iban = await SecretProvider.GetSecretAsync(_settings.NumeroSiret, "IBAN");
             _bic = await SecretProvider.GetSecretAsync(_settings.NumeroSiret, "BIC");
+        }
+    }
+
+    private void OnStatutChanged(LegalStatus newStatut)
+    {
+        if (_settings == null) return;
+        var oldStatut = _settings.StatutJuridique;
+        _settings.StatutJuridique = newStatut;
+
+        var defaults = TaxRuleEngine.GetDefaults(newStatut, _settings.TypeActivite);
+        _settings.TauxCotisation = defaults.TauxCotisation;
+        _settings.TauxCFP = defaults.TauxCFP;
+        _settings.TauxTVA = defaults.TauxTVA;
+        _settings.FranchiseTVA = defaults.FranchiseTVA;
+        _settings.PlafondCA = defaults.PlafondCA;
+        _settings.TauxLiberatoire = defaults.TauxLiberatoire;
+
+        if (newStatut != LegalStatus.MicroEntreprise)
+        {
+            _settings.VersementLiberatoire = false;
+            _settings.BeneficieACRE = false;
+        }
+
+        if (oldStatut != newStatut)
+        {
+            Snackbar.Add($"Taux mis à jour pour le statut {TaxRuleEngine.GetLibelleStatut(newStatut)}. Pensez à clôturer l'exercice précédent.", Severity.Info);
         }
     }
 

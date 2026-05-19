@@ -66,10 +66,18 @@ public class DeclarationService
     {
         await _tenant.InitializeAsync();
         var settings = await _accounting.GetEntityAsync();
+
+        // SASU : pas de declarations URSSAF classiques (bulletin de paie hors scope)
+        if (settings.StatutJuridique == LegalStatus.SASU)
+            return;
+
         using var db = _factory.CreateDbContext();
 
-        var periods = settings.PeriodiciteDeclaration == DeclarationPeriodicity.Mensuelle
-            ? GetMonthlyPeriods(year)
+        // EI/EURL : periodicite trimestrielle par defaut
+        var periods = settings.StatutJuridique == LegalStatus.MicroEntreprise
+            ? (settings.PeriodiciteDeclaration == DeclarationPeriodicity.Mensuelle
+                ? GetMonthlyPeriods(year)
+                : GetQuarterlyPeriods(year))
             : GetQuarterlyPeriods(year);
 
         var yearPrefix = $"{year}-";
@@ -100,8 +108,10 @@ public class DeclarationService
                 continue;
 
             var ca = await _accounting.GetCAForPeriodAsync(start, end);
+            var depenses = await _accounting.GetExpensesForPeriodAsync(start, end);
             var taux = _accounting.GetTauxCotisationEffectif(settings);
-            var cotisations = _accounting.CalculerCotisations(ca, settings);
+            var cotisations = _accounting.CalculerCotisations(ca, depenses, settings);
+            var cfp = _accounting.CalculerCFP(ca, depenses, settings);
 
             var effectiveDeadline = deadline;
             if (deadlineCarence.HasValue && settings.DateDebutActivite.HasValue
@@ -118,7 +128,7 @@ public class DeclarationService
                 PeriodeFin = end,
                 DateLimite = effectiveDeadline,
                 MontantCA = ca,
-                MontantCotisations = cotisations,
+                MontantCotisations = cotisations + cfp,
                 TauxApplique = taux,
                 Statut = DeclarationStatut.AFaire
             });
@@ -136,14 +146,16 @@ public class DeclarationService
         var yearPrefix = $"{year}-";
         var declarations = await db.Declarations
             .Where(d => d.EntityId == _tenant.EntityId)
-            .Where(d => d.Periode.StartsWith(yearPrefix) && d.Statut == DeclarationStatut.AFaire)
+            .Where(d => d.Periode.StartsWith(yearPrefix))
             .ToListAsync();
 
         foreach (var decl in declarations)
         {
             var ca = await _accounting.GetCAForPeriodAsync(decl.PeriodeDebut, decl.PeriodeFin);
+            var depenses = await _accounting.GetExpensesForPeriodAsync(decl.PeriodeDebut, decl.PeriodeFin);
             decl.MontantCA = ca;
-            decl.MontantCotisations = _accounting.CalculerCotisations(ca, settings);
+            var cfp = _accounting.CalculerCFP(ca, depenses, settings);
+            decl.MontantCotisations = _accounting.CalculerCotisations(ca, depenses, settings) + cfp;
             decl.TauxApplique = _accounting.GetTauxCotisationEffectif(settings);
             db.Declarations.Update(decl);
         }

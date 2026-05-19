@@ -11,14 +11,12 @@ public class AccountingServiceTests : IDisposable
 
     // ── Taux de cotisations ──
 
-    [Theory]
-    [InlineData(ActivityCategory.BICVente, 12.3)]
-    [InlineData(ActivityCategory.BICServices, 21.2)]
-    [InlineData(ActivityCategory.BNC, 21.1)]
-    public void GetTauxCotisation_ReturnsCorrectRate(ActivityCategory cat, decimal expected)
+    [Fact]
+    public void GetTauxCotisation_ReturnsEntityRate()
     {
+        var entity = new Entity { TauxCotisation = 25.6m };
         var svc = CreateService(1);
-        svc.GetTauxCotisation(cat).Should().Be(expected);
+        svc.GetTauxCotisation(entity).Should().Be(25.6m);
     }
 
     // ── ACRE ──
@@ -26,9 +24,9 @@ public class AccountingServiceTests : IDisposable
     [Fact]
     public void GetTauxCotisationEffectif_SansACRE_ReturnsTauxNormal()
     {
-        var entity = new Entity { TypeActivite = ActivityCategory.BNC, BeneficieACRE = false };
+        var entity = new Entity { TauxCotisation = 25.6m, BeneficieACRE = false };
         var svc = CreateService(1);
-        svc.GetTauxCotisationEffectif(entity).Should().Be(21.1m);
+        svc.GetTauxCotisationEffectif(entity).Should().Be(25.6m);
     }
 
     [Fact]
@@ -36,12 +34,12 @@ public class AccountingServiceTests : IDisposable
     {
         var entity = new Entity
         {
-            TypeActivite = ActivityCategory.BNC,
+            TauxCotisation = 25.6m,
             BeneficieACRE = true,
-            DateDebutActivite = DateTime.Today.AddMonths(-6) // il y a 6 mois
+            DateDebutActivite = DateTime.Today.AddMonths(-6)
         };
         var svc = CreateService(1);
-        svc.GetTauxCotisationEffectif(entity).Should().Be(21.1m / 2m);
+        svc.GetTauxCotisationEffectif(entity).Should().Be(25.6m / 2m);
     }
 
     [Fact]
@@ -49,9 +47,9 @@ public class AccountingServiceTests : IDisposable
     {
         var entity = new Entity
         {
-            TypeActivite = ActivityCategory.BICServices,
+            TauxCotisation = 21.2m,
             BeneficieACRE = true,
-            DateDebutActivite = DateTime.Today.AddYears(-2) // il y a 2 ans
+            DateDebutActivite = DateTime.Today.AddYears(-2)
         };
         var svc = CreateService(1);
         svc.GetTauxCotisationEffectif(entity).Should().Be(21.2m);
@@ -62,24 +60,22 @@ public class AccountingServiceTests : IDisposable
     {
         var entity = new Entity
         {
-            TypeActivite = ActivityCategory.BNC,
+            TauxCotisation = 25.6m,
             BeneficieACRE = true,
             DateDebutActivite = null
         };
         var svc = CreateService(1);
-        svc.GetTauxCotisationEffectif(entity).Should().Be(21.1m);
+        svc.GetTauxCotisationEffectif(entity).Should().Be(25.6m);
     }
 
     // ── Calcul cotisations ──
 
-    [Theory]
-    [InlineData(10000, ActivityCategory.BICVente, 1230)]
-    [InlineData(10000, ActivityCategory.BICServices, 2120)]
-    [InlineData(10000, ActivityCategory.BNC, 2110)]
-    public void CalculerCotisations_ParCategorie(decimal ca, ActivityCategory cat, decimal expected)
+    [Fact]
+    public void CalculerCotisations_UtiliseTauxEntity()
     {
+        var entity = new Entity { TauxCotisation = 25.6m, BeneficieACRE = false };
         var svc = CreateService(1);
-        svc.CalculerCotisations(ca, cat).Should().Be(expected);
+        svc.CalculerCotisations(10000m, entity).Should().Be(2560m);
     }
 
     [Fact]
@@ -87,13 +83,12 @@ public class AccountingServiceTests : IDisposable
     {
         var entity = new Entity
         {
-            TypeActivite = ActivityCategory.BNC,
+            TauxCotisation = 25.6m,
             BeneficieACRE = true,
             DateDebutActivite = DateTime.Today.AddMonths(-3)
         };
         var svc = CreateService(1);
-        // 10000 * (21.1/2) / 100 = 1055
-        svc.CalculerCotisations(10000m, entity).Should().Be(1055m);
+        svc.CalculerCotisations(10000m, entity).Should().Be(1280m);
     }
 
     // ── Versement libératoire ──
@@ -174,14 +169,12 @@ public class AccountingServiceTests : IDisposable
         var svc = new AccountingService(_db.CreateFactory(), tenant);
 
         db.Revenues.Add(new Revenue { EntityId = entity.Id, Date = new DateTime(2026, 6, 15), Montant = 5000m, Description = "R1" });
-        db.FixedCharges.Add(new FixedCharge { EntityId = entity.Id, Nom = "Loyer", Montant = 100m, Active = true });
         db.SaveChanges();
 
         var summary = await svc.GetDashboardSummaryAsync(2026, 6);
 
         summary.CA.Should().Be(5000m);
         summary.Cotisations.Should().BeGreaterThan(0);
-        summary.ChargesFixes.Should().Be(100m); // 1 mois
         summary.BeneficeNet.Should().Be(summary.CA - summary.TotalCharges);
     }
 

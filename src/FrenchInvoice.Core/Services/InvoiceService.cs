@@ -169,7 +169,7 @@ public class InvoiceService
         return invoice;
     }
 
-    public async Task<Invoice> MarquerPayeeAsync(int id, string? modePaiement = null)
+    public async Task<Invoice> MarquerPayeeAsync(int id, string? modePaiement = null, int? existingRevenueId = null)
     {
         await _tenant.InitializeAsync();
         using var db = _factory.CreateDbContext();
@@ -183,27 +183,39 @@ public class InvoiceService
 
         var settings = await db.Entities.FirstAsync(e => e.Id == _tenant.EntityId);
 
-        if (await _closingService.IsDateLockedAsync(invoice.EntityId, DateTime.UtcNow))
-            throw new InvalidOperationException("La période comptable est clôturée.");
-
-        // Créer la recette automatiquement
-        var revenue = new Revenue
+        Revenue revenue;
+        if (existingRevenueId.HasValue)
         {
-            EntityId = _tenant.EntityId,
-            Date = DateTime.Today,
-            Montant = invoice.MontantTTC,
-            Description = $"Facture {invoice.Numero}",
-            Client = invoice.Client.Nom,
-            ModePaiement = modePaiement ?? "Virement",
-            Categorie = settings.TypeActivite,
-            ReferenceFacture = invoice.Numero,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        db.Revenues.Add(revenue);
-        await db.SaveChangesAsync();
+            // Rattacher à une recette existante (rapprochement avec paiement déjà enregistré)
+            revenue = await db.Revenues.FirstOrDefaultAsync(r => r.Id == existingRevenueId.Value && r.EntityId == _tenant.EntityId)
+                ?? throw new InvalidOperationException($"Recette #{existingRevenueId} introuvable.");
+            revenue.ReferenceFacture = invoice.Numero;
+            revenue.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            if (await _closingService.IsDateLockedAsync(invoice.EntityId, DateTime.UtcNow))
+                throw new InvalidOperationException("La période comptable est clôturée.");
 
-        await _hashChainService.RecordRevenueAsync(revenue);
+            // Créer la recette automatiquement
+            revenue = new Revenue
+            {
+                EntityId = _tenant.EntityId,
+                Date = DateTime.Today,
+                Montant = invoice.MontantTTC,
+                Description = $"Facture {invoice.Numero}",
+                Client = invoice.Client.Nom,
+                ModePaiement = modePaiement ?? "Virement",
+                Categorie = settings.TypeActivite,
+                ReferenceFacture = invoice.Numero,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            db.Revenues.Add(revenue);
+            await db.SaveChangesAsync();
+
+            await _hashChainService.RecordRevenueAsync(revenue);
+        }
 
         invoice.Statut = InvoiceStatus.Payee;
         invoice.RevenueId = revenue.Id;

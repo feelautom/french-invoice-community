@@ -10,6 +10,8 @@ public class User
     public Entity Entity { get; set; } = null!;
     public UserRole Role { get; set; } = UserRole.Admin;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public string? PasswordResetToken { get; set; }
+    public DateTime? PasswordResetExpiry { get; set; }
 }
 
 public enum UserRole

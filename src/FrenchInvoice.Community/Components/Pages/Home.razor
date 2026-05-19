@@ -8,7 +8,13 @@
 
 <PageTitle>Dashboard — FrenchInvoice</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4">Dashboard</MudText>
+<MudText Typo="Typo.h4" Class="mb-4">
+    Dashboard
+    @if (_settings != null && _settings.StatutJuridique != LegalStatus.MicroEntreprise)
+    {
+        <MudChip T="string" Color="Color.Info" Size="Size.Small" Class="ml-2">@TaxRuleEngine.GetLibelleStatut(_settings.StatutJuridique)</MudChip>
+    }
+</MudText>
 
 @if (_alerts.Any())
 {
@@ -52,9 +58,20 @@
 <MudGrid Class="mt-4">
     <MudItem xs="12" sm="6" md="3">
         <MudPaper Class="pa-4" Elevation="2">
-            <MudText Typo="Typo.subtitle2" Color="Color.Warning">Cotisations URSSAF</MudText>
-            <MudText Typo="Typo.h4">@_summaryYear?.Cotisations.ToString("N2") &euro;</MudText>
-            <MudText Typo="Typo.caption">Taux effectif : @_tauxEffectif.ToString("N1")%@(_acreActive ? " (ACRE)" : "")</MudText>
+            <MudText Typo="Typo.subtitle2" Color="Color.Warning">
+                @(_settings?.StatutJuridique == LegalStatus.SASU ? "Charges sociales" : "Cotisations + CFP")
+            </MudText>
+            <MudText Typo="Typo.h4">@((_summaryYear?.Cotisations + _summaryYear?.CFP)?.ToString("N2")) &euro;</MudText>
+            <MudText Typo="Typo.caption">
+                @if (_settings?.StatutJuridique != LegalStatus.MicroEntreprise)
+                {
+                    @:Sur bénéfice — @_tauxEffectif.ToString("N1")% + @_tauxCFP.ToString("N1")% CFP
+                }
+                else
+                {
+                    @:Taux effectif : @_tauxEffectif.ToString("N1")% + @_tauxCFP.ToString("N1")% CFP@(_acreActive ? " (ACRE)" : "")
+                }
+            </MudText>
         </MudPaper>
     </MudItem>
     <MudItem xs="12" sm="6" md="3">
@@ -62,13 +79,6 @@
             <MudText Typo="Typo.subtitle2" Color="Color.Warning">Versement libératoire IR</MudText>
             <MudText Typo="Typo.h4">@_summaryYear?.VersementLiberatoire.ToString("N2") &euro;</MudText>
             <MudText Typo="Typo.caption">@(_settings?.VersementLiberatoire == true ? $"{_settings.TauxLiberatoire}%" : "Désactivé")</MudText>
-        </MudPaper>
-    </MudItem>
-    <MudItem xs="12" sm="6" md="3">
-        <MudPaper Class="pa-4" Elevation="2">
-            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Charges fixes</MudText>
-            <MudText Typo="Typo.h4">@_summaryYear?.ChargesFixes.ToString("N2") &euro;</MudText>
-            <MudText Typo="Typo.caption">@(_summaryYear != null ? $"{(_summaryYear.ChargesFixes / 12):N2} €/mois" : "")</MudText>
         </MudPaper>
     </MudItem>
     <MudItem xs="12" sm="6" md="3">
@@ -82,17 +92,30 @@
 
 @* Ligne 3 : Plafond + URSSAF *@
 <MudGrid Class="mt-4">
-    <MudItem xs="12" md="6">
-        <MudPaper Class="pa-4" Elevation="2">
-            <MudText Typo="Typo.h6" Class="mb-2">Progression vers le plafond</MudText>
-            <MudProgressLinear Color="@(_progressPercent > 90 ? Color.Error : Color.Primary)"
-                               Value="@_progressPercent" Class="my-2" />
-            <MudText Typo="Typo.body2">
-                @_summaryYear?.CA.ToString("N2") &euro; / @_settings?.PlafondCA.ToString("N2") &euro;
-                (@_progressPercent.ToString("N1")%)
-            </MudText>
-        </MudPaper>
-    </MudItem>
+    @if (_settings?.StatutJuridique == LegalStatus.MicroEntreprise)
+    {
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-2">Progression vers le plafond</MudText>
+                <MudProgressLinear Color="@(_progressPercent > 90 ? Color.Error : Color.Primary)"
+                                   Value="@_progressPercent" Class="my-2" />
+                <MudText Typo="Typo.body2">
+                    @_summaryYear?.CA.ToString("N2") &euro; / @_settings?.PlafondCA.ToString("N2") &euro;
+                    (@_progressPercent.ToString("N1")%)
+                </MudText>
+            </MudPaper>
+        </MudItem>
+    }
+    else
+    {
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-2">Dépenses de l'année</MudText>
+                <MudText Typo="Typo.h4">@_summaryYear?.Depenses.ToString("N2") &euro;</MudText>
+                <MudText Typo="Typo.caption">Charges déductibles du bénéfice</MudText>
+            </MudPaper>
+        </MudItem>
+    }
     <MudItem xs="12" md="6">
         <MudPaper Class="pa-4" Elevation="2">
             <MudText Typo="Typo.h6" Class="mb-2">Prochaine échéance URSSAF</MudText>
@@ -114,79 +137,106 @@
     </MudItem>
 </MudGrid>
 
-@* Aide à la déclaration *@
-@if (_summaryMonth != null)
-{
-    <MudPaper Class="pa-4 mt-4" Elevation="2">
-        <MudText Typo="Typo.h6" Class="mb-3">Aide à la déclaration — @DateTime.Today.ToString("MMMM yyyy")</MudText>
-        <MudSimpleTable Dense="true" Bordered="true" Style="max-width: 500px;">
-            <tbody>
-                <tr>
-                    <td>CA HT du mois</td>
-                    <td class="text-right"><strong>@_summaryMonth.CA.ToString("N2") &euro;</strong></td>
-                </tr>
-                <tr>
-                    <td>Cotisations URSSAF (@_tauxEffectif.ToString("N1")%)</td>
-                    <td class="text-right">@_summaryMonth.Cotisations.ToString("N2") &euro;</td>
-                </tr>
-                @if (_settings?.VersementLiberatoire == true)
-                {
-                    <tr>
-                        <td>Versement libératoire IR (@_settings.TauxLiberatoire%)</td>
-                        <td class="text-right">@_summaryMonth.VersementLiberatoire.ToString("N2") &euro;</td>
-                    </tr>
-                }
-                <tr style="border-top: 2px solid;">
-                    <td><strong>Total à payer</strong></td>
-                    <td class="text-right"><strong>@((_summaryMonth.Cotisations + _summaryMonth.VersementLiberatoire).ToString("N2")) &euro;</strong></td>
-                </tr>
-            </tbody>
-        </MudSimpleTable>
-    </MudPaper>
-}
-
-@* Résumé des charges *@
-@if (_summaryYear != null)
-{
-    <MudPaper Class="pa-4 mt-4" Elevation="2">
-        <MudText Typo="Typo.h6" Class="mb-3">Résumé annuel des charges</MudText>
-        <MudSimpleTable Dense="true" Bordered="true" Style="max-width: 500px;">
-            <tbody>
-                <tr>
-                    <td>Cotisations URSSAF</td>
-                    <td class="text-right">@_summaryYear.Cotisations.ToString("N2") &euro;</td>
-                </tr>
-                <tr>
-                    <td>Versement libératoire IR</td>
-                    <td class="text-right">@_summaryYear.VersementLiberatoire.ToString("N2") &euro;</td>
-                </tr>
-                <tr>
-                    <td>Frais variables</td>
-                    <td class="text-right">@_summaryYear.FraisVariables.ToString("N2") &euro;</td>
-                </tr>
-                <tr>
-                    <td>Charges fixes</td>
-                    <td class="text-right">@_summaryYear.ChargesFixes.ToString("N2") &euro;</td>
-                </tr>
-                <tr style="border-top: 2px solid;">
-                    <td><strong>Total charges</strong></td>
-                    <td class="text-right"><strong>@_summaryYear.TotalCharges.ToString("N2") &euro;</strong></td>
-                </tr>
-                <tr>
-                    <td><strong>Bénéfice net</strong></td>
-                    <td class="text-right" style="color: @(_summaryYear.BeneficeNet >= 0 ? "green" : "red");">
-                        <strong>@_summaryYear.BeneficeNet.ToString("N2") &euro;</strong>
-                    </td>
-                </tr>
-            </tbody>
-        </MudSimpleTable>
-    </MudPaper>
-}
+@* Aide à la déclaration + Résumé annuel côte à côte *@
+<MudGrid Class="mt-4">
+    <MudItem xs="12" md="6">
+        @if (_summaryMonth != null && _settings?.StatutJuridique != LegalStatus.SASU)
+        {
+            <MudPaper Class="pa-4" Elevation="2" Style="height: 100%;">
+                <MudText Typo="Typo.h6" Class="mb-3">Aide à la déclaration — @DateTime.Today.ToString("MMMM yyyy")</MudText>
+                <MudSimpleTable Dense="true" Bordered="true">
+                    <tbody>
+                        <tr>
+                            <td>CA HT du mois</td>
+                            <td class="text-right"><strong>@_summaryMonth.CA.ToString("N2") &euro;</strong></td>
+                        </tr>
+                        @if (_settings?.StatutJuridique != LegalStatus.MicroEntreprise)
+                        {
+                            <tr>
+                                <td>Dépenses du mois</td>
+                                <td class="text-right">@_summaryMonth.Depenses.ToString("N2") &euro;</td>
+                            </tr>
+                        }
+                        <tr>
+                            <td>@(_settings?.StatutJuridique == LegalStatus.MicroEntreprise ? "Cotisations URSSAF" : "Cotisations sur bénéfice") (@_tauxEffectif.ToString("N1")%)</td>
+                            <td class="text-right">@_summaryMonth.Cotisations.ToString("N2") &euro;</td>
+                        </tr>
+                        <tr>
+                            <td>CFP (@_tauxCFP.ToString("N1")%)</td>
+                            <td class="text-right">@_summaryMonth.CFP.ToString("N2") &euro;</td>
+                        </tr>
+                        @if (_settings?.VersementLiberatoire == true && _settings.StatutJuridique == LegalStatus.MicroEntreprise)
+                        {
+                            <tr>
+                                <td>Versement libératoire IR (@_settings.TauxLiberatoire%)</td>
+                                <td class="text-right">@_summaryMonth.VersementLiberatoire.ToString("N2") &euro;</td>
+                            </tr>
+                        }
+                        <tr style="border-top: 2px solid;">
+                            <td><strong>Total à payer</strong></td>
+                            <td class="text-right"><strong>@((_summaryMonth.Cotisations + _summaryMonth.CFP + _summaryMonth.VersementLiberatoire).ToString("N2")) &euro;</strong></td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        }
+        else if (_settings?.StatutJuridique == LegalStatus.SASU)
+        {
+            <MudPaper Class="pa-4" Elevation="2" Style="height: 100%;">
+                <MudText Typo="Typo.h6" Class="mb-3">SASU — Charges sociales</MudText>
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    En SASU, les charges sociales sont calculées sur les bulletins de paie du président.
+                    Cette fonctionnalité sera disponible dans une prochaine version.
+                    Les montants affichés sont des estimations basées sur le taux configuré.
+                </MudAlert>
+            </MudPaper>
+        }
+    </MudItem>
+    <MudItem xs="12" md="6">
+        @if (_summaryYear != null)
+        {
+            <MudPaper Class="pa-4" Elevation="2" Style="height: 100%;">
+                <MudText Typo="Typo.h6" Class="mb-3">Résumé annuel des charges</MudText>
+                <MudSimpleTable Dense="true" Bordered="true">
+                    <tbody>
+                        <tr>
+                            <td>Cotisations URSSAF</td>
+                            <td class="text-right">@_summaryYear.Cotisations.ToString("N2") &euro;</td>
+                        </tr>
+                        <tr>
+                            <td>CFP (formation professionnelle)</td>
+                            <td class="text-right">@_summaryYear.CFP.ToString("N2") &euro;</td>
+                        </tr>
+                        <tr>
+                            <td>Versement libératoire IR</td>
+                            <td class="text-right">@_summaryYear.VersementLiberatoire.ToString("N2") &euro;</td>
+                        </tr>
+                        <tr>
+                            <td>Frais variables</td>
+                            <td class="text-right">@_summaryYear.FraisVariables.ToString("N2") &euro;</td>
+                        </tr>
+                        <tr style="border-top: 2px solid;">
+                            <td><strong>Total charges</strong></td>
+                            <td class="text-right"><strong>@_summaryYear.TotalCharges.ToString("N2") &euro;</strong></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Bénéfice net</strong></td>
+                            <td class="text-right" style="color: @(_summaryYear.BeneficeNet >= 0 ? "green" : "red");">
+                                <strong>@_summaryYear.BeneficeNet.ToString("N2") &euro;</strong>
+                            </td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
 
 @code {
     private DashboardSummary? _summaryMonth, _summaryYear;
     private decimal _tresorerie, _apports;
     private decimal _tauxEffectif;
+    private decimal _tauxCFP;
     private bool _acreActive;
     private double _progressPercent;
     private Entity? _settings;
@@ -212,6 +262,7 @@
         _summaryYear = await Accounting.GetDashboardSummaryAsync(now.Year);
 
         _tauxEffectif = Accounting.GetTauxCotisationEffectif(_settings);
+        _tauxCFP = Accounting.GetTauxCFP(_settings);
         _acreActive = _settings.BeneficieACRE && _settings.DateDebutActivite.HasValue
             && DateTime.Today < _settings.DateDebutActivite.Value.AddYears(1);
 
@@ -228,9 +279,8 @@
             .FirstOrDefaultAsync();
         _tresorerie = lastWithBalance?.Solde ?? 0;
 
-        // Solde net des mouvements internes (positifs + négatifs)
         _apports = await db.BankTransactions
-            .Where(t => t.EntityId == TenantProvider.EntityId && t.Categorise && t.RevenueId == null && t.ExpenseId == null)
+            .Where(t => t.EntityId == TenantProvider.EntityId && t.Type == BankTransactionType.PersonalContribution)
             .SumAsync(t => (decimal?)t.Montant) ?? 0;
 
         _nextDeclaration = await db.Declarations

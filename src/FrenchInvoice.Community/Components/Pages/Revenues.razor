@@ -4,6 +4,7 @@
 @inject ITenantProvider TenantProvider
 @inject HashChainService HashChainService
 @inject ClosingService ClosingService
+@inject IDialogService DialogService
 
 <PageTitle>Recettes — FrenchInvoice</PageTitle>
 
@@ -44,56 +45,75 @@
     </MudButton>
 }
 
-<MudTable T="Revenue" Items="@_revenues" Dense="true" Hover="true" Striped="true"
-          GroupBy="@_groupDefinition" GroupHeaderStyle="background-color:var(--mud-palette-primary); color:white;">
-    <ColGroup>
-        <col style="width:110px;" />
-        <col />
-        <col style="width:150px;" />
-        <col style="width:110px;" />
-        <col style="width:110px;" />
-        <col style="width:110px;" />
-        <col style="width:100px;" />
-    </ColGroup>
-    <HeaderContent>
-        <MudTh>Date</MudTh>
-        <MudTh>Description</MudTh>
-        <MudTh>Client</MudTh>
-        <MudTh>Montant</MudTh>
-        <MudTh>Paiement</MudTh>
-        <MudTh>Catégorie</MudTh>
-        <MudTh>Actions</MudTh>
-    </HeaderContent>
-    <GroupHeaderTemplate>
-        <MudTh colspan="7" Style="background-color: var(--mud-palette-primary-lighten); font-weight:bold; padding:8px 16px;">
-            @{
-                var monthKey = (string)context.Key;
-                var monthItems = _revenues.Where(r => $"{r.Date.Year}-{r.Date.Month:D2}" == monthKey).ToList();
-                var monthTotal = monthItems.Sum(r => r.Montant);
-            }
-            @FormatMonthKey(monthKey) — @monthItems.Count recette(s) — @monthTotal.ToString("N2") &euro;
-        </MudTh>
-    </GroupHeaderTemplate>
-    <RowTemplate>
-        <MudTd DataLabel="Date">@context.Date.ToString("dd/MM/yyyy")</MudTd>
-        <MudTd DataLabel="Description">@context.Description</MudTd>
-        <MudTd DataLabel="Client">@context.Client</MudTd>
-        <MudTd DataLabel="Montant">
-            <MudText Color="Color.Success">@context.Montant.ToString("N2") &euro;</MudText>
-        </MudTd>
-        <MudTd DataLabel="Paiement">@context.ModePaiement</MudTd>
-        <MudTd DataLabel="Catégorie">@context.Categorie</MudTd>
-        <MudTd DataLabel="Actions">
-            @if (_canEdit)
+<MudSimpleTable Dense="true" Hover="true" Striped="true">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Client</th>
+            <th style="text-align:right">Montant</th>
+            <th>Paiement</th>
+            <th>Catégorie</th>
+            <th>Notes</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var group in _revenuesByMonth)
+        {
+            <tr style="background-color: var(--mud-palette-primary); color: white; cursor: pointer;"
+                @onclick="() => ToggleMonth(group.Key)">
+                <td colspan="5">
+                    <MudIcon Icon="@(IsExpanded(group.Key) ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ChevronRight)"
+                             Size="Size.Small" Style="vertical-align: middle; color: white;" />
+                    <strong>@group.Label</strong> &nbsp; (@group.Revenues.Count recette(s))
+                </td>
+                <td style="text-align:right"><strong>@group.Total.ToString("N2") &euro;</strong></td>
+                <td colspan="2"></td>
+            </tr>
+            @if (IsExpanded(group.Key))
             {
-                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
-                               OnClick="() => OpenEditDialog(context)" />
-                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                               OnClick="() => DeleteRevenue(context)" />
+                @foreach (var r in group.Revenues)
+                {
+                    <tr>
+                        <td style="white-space:nowrap">@r.Date.ToString("dd/MM/yyyy")</td>
+                        <td>@r.Description</td>
+                        <td>@r.Client</td>
+                        <td style="text-align:right; white-space:nowrap">
+                            <MudText Color="Color.Success">@r.Montant.ToString("N2") &euro;</MudText>
+                        </td>
+                        <td style="white-space:nowrap">@r.ModePaiement</td>
+                        <td>@r.Categorie</td>
+                        <td>
+                            @if (_editingNoteId == r.Id)
+                            {
+                                <MudTextField @bind-Value="_editingNoteValue" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                              Immediate="true" OnKeyDown="(e) => OnNoteKeyDown(e, r)"
+                                              OnBlur="() => SaveNote(r)" Style="min-width: 150px;" />
+                            }
+                            else
+                            {
+                                <span style="cursor: pointer; color: var(--mud-palette-text-secondary); font-size: 0.85em;"
+                                      @onclick="() => StartEditNote(r)">
+                                    @(string.IsNullOrEmpty(r.Notes) ? "+" : r.Notes)
+                                </span>
+                            }
+                        </td>
+                        <td>
+                            @if (_canEdit)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                               OnClick="() => OpenEditDialog(r)" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                               OnClick="() => DeleteRevenue(r)" />
+                            }
+                        </td>
+                    </tr>
+                }
             }
-        </MudTd>
-    </RowTemplate>
-</MudTable>
+        }
+    </tbody>
+</MudSimpleTable>
 
 <MudPaper Class="pa-4 mt-2" Elevation="1">
     <MudText Typo="Typo.h6">Total : @_total.ToString("N2") &euro;</MudText>
@@ -132,6 +152,7 @@
 
 @code {
     private List<Revenue> _revenues = new();
+    private List<MonthGroup> _revenuesByMonth = new();
     private Revenue _editItem = new();
     private DateTime? _editDate = DateTime.Today;
     private bool _dialogVisible;
@@ -144,19 +165,22 @@
     private string? _filterModePaiement;
     private decimal _total;
     private bool _canEdit;
+    private HashSet<string> _expandedMonths = new();
+    private int? _editingNoteId;
+    private string _editingNoteValue = "";
 
-    private readonly TableGroupDefinition<Revenue> _groupDefinition = new()
+    private class MonthGroup
     {
-        GroupName = "Mois",
-        Selector = r => $"{r.Date.Year}-{r.Date.Month:D2}",
-        IsInitiallyExpanded = true
-    };
+        public string Key { get; set; } = "";
+        public string Label { get; set; } = "";
+        public decimal Total { get; set; }
+        public List<Revenue> Revenues { get; set; } = new();
+    }
 
-    private static string FormatMonthKey(string key)
+    private bool IsExpanded(string key) => _expandedMonths.Contains(key);
+    private void ToggleMonth(string key)
     {
-        if (DateTime.TryParse($"{key}-01", out var d))
-            return d.ToString("MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"));
-        return key;
+        if (!_expandedMonths.Remove(key)) _expandedMonths.Add(key);
     }
 
     protected override async Task OnInitializedAsync()
@@ -180,9 +204,29 @@
 
         _revenues = await query.OrderByDescending(r => r.Date).ToListAsync();
         _total = _revenues.Sum(r => r.Montant);
+
+        _revenuesByMonth = _revenues
+            .GroupBy(r => new { r.Date.Year, r.Date.Month })
+            .OrderByDescending(g => g.Key.Year).ThenByDescending(g => g.Key.Month)
+            .Select(g => new MonthGroup
+            {
+                Key = $"{g.Key.Year}-{g.Key.Month}",
+                Label = new DateTime(g.Key.Year, g.Key.Month, 1).ToString("MMMM yyyy",
+                    System.Globalization.CultureInfo.GetCultureInfo("fr-FR")),
+                Total = g.Sum(r => r.Montant),
+                Revenues = g.OrderByDescending(r => r.Date).ToList()
+            })
+            .ToList();
+
+        if (_expandedMonths.Count == 0 && _revenuesByMonth.Any())
+            _expandedMonths.Add(_revenuesByMonth.First().Key);
     }
 
-    private async Task ApplyFilter() => await LoadData();
+    private async Task ApplyFilter()
+    {
+        _expandedMonths.Clear();
+        await LoadData();
+    }
 
     private void OpenAddDialog()
     {
@@ -242,6 +286,34 @@
         await LoadData();
     }
 
+    private void StartEditNote(Revenue revenue)
+    {
+        _editingNoteId = revenue.Id;
+        _editingNoteValue = revenue.Notes ?? "";
+    }
+
+    private async Task OnNoteKeyDown(KeyboardEventArgs e, Revenue revenue)
+    {
+        if (e.Key == "Enter") await SaveNote(revenue);
+        else if (e.Key == "Escape") _editingNoteId = null;
+    }
+
+    private async Task SaveNote(Revenue revenue)
+    {
+        if (_editingNoteId != revenue.Id) return;
+        _editingNoteId = null;
+
+        using var db = DbFactory.CreateDbContext();
+        var entity = await db.Revenues.FindAsync(revenue.Id);
+        if (entity != null)
+        {
+            entity.Notes = string.IsNullOrWhiteSpace(_editingNoteValue) ? null : _editingNoteValue.Trim();
+            entity.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+            revenue.Notes = entity.Notes;
+        }
+    }
+
     private async Task DeleteRevenue(Revenue rev)
     {
         if (!_canEdit) return;
@@ -250,6 +322,11 @@
             Snackbar.Add("Période clôturée", Severity.Error);
             return;
         }
+        var result = await DialogService.ShowMessageBox(
+            "Confirmation de suppression",
+            $"Supprimer la recette de {rev.Montant:N2} € du {rev.Date:dd/MM/yyyy} ?",
+            yesText: "Supprimer", cancelText: "Annuler");
+        if (result != true) return;
         using var db = DbFactory.CreateDbContext();
         db.Revenues.Remove(rev);
         await db.SaveChangesAsync();
